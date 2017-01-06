@@ -56,17 +56,17 @@ public:
 
 	void Close(void);
 
-	BOOL SetFeature(const BYTE * src, int size);
+	BOOL SetFeature(std::vector<BYTE> const &src);
 
-	BOOL GetFeature(LPBYTE dst, int size);
+	BOOL GetFeature(std::vector<BYTE> * dst);
 
-	const BYTE * GetFeature(BYTE id);
+	std::vector<BYTE> const * GetFeature(BYTE id);
 
-	BOOL Write(const BYTE * src, int size);
+	BOOL Write(std::vector<BYTE> const &src);
 
-	BOOL Read(LPBYTE dst, int size);
+	BOOL Read(std::vector<BYTE> * dst);
 
-	const BYTE * Read(void);
+	std::vector<BYTE> const * Read(void);
 
 	BOOL IsAsyncReading(void) const;
 

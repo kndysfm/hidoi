@@ -5,3 +5,4 @@
 #include "hidusagex.h"
 
 #include "device.h"
+#include "utils.h"

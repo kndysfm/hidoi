@@ -133,11 +133,13 @@
     <ClInclude Include="device.h" />
     <ClInclude Include="hidusagex.h" />
     <ClInclude Include="tstring.h" />
+    <ClInclude Include="utils.h" />
     <ClInclude Include="wahidx.h" />
     <ClInclude Include="wdk\hid.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="device.cpp" />
+    <ClCompile Include="utils.cpp" />
     <ClCompile Include="wdk\pnp.c" />
     <ClCompile Include="wdk\report.c" />
   </ItemGroup>

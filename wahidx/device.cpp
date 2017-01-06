@@ -13,6 +13,9 @@ USING_TCHAR_STRING;
 #include <unordered_set>
 #include <queue>
 #include <map>
+#include <mutex>
+#include <thread>
+#include <cstdio>
 
 using namespace wahidx;
 
@@ -22,8 +25,21 @@ typedef DWORD USAGEPAGE_USAGE;
 class Device::Path
 {
 public:
-	Tstring m_str;
-	Path(LPCTSTR cstr): m_str(cstr) {  }
+	Tstring tstr;
+	std::string str;
+
+	Path(LPCTSTR ctstr): tstr(ctstr)
+	{
+#ifdef  UNICODE 
+		size_t size_dst = (_tcslen(ctstr) + 2) * sizeof(_TCHAR);
+		std::unique_ptr<char[]> dst(new char[size_dst]);
+		size_t num_converted = 0;
+		wcstombs_s(&num_converted, dst.get(), size_dst, ctstr, size_dst);
+		str = dst.get();
+#else
+		str = tstr;
+#endif
+	}
 };
 
 class Device::Info
@@ -39,14 +55,14 @@ public:
 		std::vector<BYTE>				 buffer;
 		std::vector<HIDP_VALUE_CAPS>	ValueCaps;
 		std::vector<HIDP_BUTTON_CAPS>	ButtonCaps;
-		std::map<USAGEPAGE_USAGE, ULONG> Values;
-		std::map<USAGEPAGE_USAGE, LONG> ScaledValues;
-		std::vector<USAGE>				ButtonUsagePages;
-		std::vector<USAGEPAGE_USAGE>	Buttons;
+		//std::map<USAGEPAGE_USAGE, ULONG> Values;
+		//std::map<USAGEPAGE_USAGE, LONG> ScaledValues;
+		//std::vector<USAGE>				ButtonUsagePages;
+		//std::vector<USAGEPAGE_USAGE>	Buttons;
 	};
 	Report							inputReport, outputReport, featureReport;
 
-	Info(HANDLE h)
+	Info(HANDLE h, BOOL with_detailed_caps)
 	{
 		hDevice = h;
 		if (h != INVALID_HANDLE_VALUE)
@@ -57,6 +73,7 @@ public:
 			{
 				HIDP_CAPS capabilities;
 				NTSTATUS status = HidP_GetCaps(preparsedData, &capabilities);
+				if (with_detailed_caps) PrepareReportInfo();
 			}
 			else
 			{
@@ -78,7 +95,7 @@ public:
 		}
 	}
 
-	void PrepareReportInfo(HIDP_REPORT_TYPE rep_type, Report *r, USHORT length_buffer)
+	void _PrepareReportInfo(HIDP_REPORT_TYPE rep_type, Report *r, USHORT length_buffer)
 	{
 		r->buffer.resize(length_buffer, 0x00);
 
@@ -88,17 +105,17 @@ public:
 		vcaps_buf = new HIDP_VALUE_CAPS[length];
 		HidP_GetValueCaps(rep_type, vcaps_buf, &length, preparsedData);
 		r->ValueCaps.reserve(length);
-		r->Values.clear();
-		r->ScaledValues.clear();
+		//r->Values.clear();
+		//r->ScaledValues.clear();
 
 		for (USHORT idx = 0; idx < length; idx++)
 		{
 			USHORT upage = vcaps_buf[idx].UsagePage;
 			USHORT usage = vcaps_buf[idx].NotRange.Usage;
-			USAGEPAGE_USAGE upage_usage = ((USAGEPAGE_USAGE)upage << 16) | usage;
+			USAGEPAGE_USAGE upage_usage = TO_USAGEPAGE_USAGE(upage, usage);
 
-			r->Values[upage_usage] = vcaps_buf[idx].LogicalMin;
-			r->ScaledValues[upage_usage] = vcaps_buf[idx].PhysicalMin;
+			//r->Values[upage_usage] = vcaps_buf[idx].LogicalMin;
+			//r->ScaledValues[upage_usage] = vcaps_buf[idx].PhysicalMin;
 			r->ValueCaps.push_back(vcaps_buf[idx]);
 		}
 
@@ -109,36 +126,36 @@ public:
 		HIDP_BUTTON_CAPS *bcaps_buf = new HIDP_BUTTON_CAPS[length];
 		HidP_GetButtonCaps(rep_type, bcaps_buf, &length, preparsedData);
 		r->ButtonCaps.reserve(length);
-		r->ButtonUsagePages.clear();
+		//r->ButtonUsagePages.clear();
 		for (USHORT idx = 0; idx < length; idx++)
 		{
 			USHORT upage = bcaps_buf[idx].UsagePage;
-			DWORD size = r->ButtonUsagePages.size();
+			//DWORD size = r->ButtonUsagePages.size();
 			r->ButtonCaps.push_back(bcaps_buf[idx]);
-			for (USHORT i = 0; i <= size; i++)
-			{
-				if (i == size)
-				{
-					r->ButtonUsagePages.push_back(upage);
-					break;
-				}
-				else if (r->ButtonUsagePages[i] == upage)
-				{
-					break; // same found
-				}
-				else
-					continue;
-			}
+			//for (USHORT i = 0; i <= size; i++)
+			//{
+			//	if (i == size)
+			//	{
+			//		r->ButtonUsagePages.push_back(upage);
+			//		break;
+			//	}
+			//	else if (r->ButtonUsagePages[i] == upage)
+			//	{
+			//		break; // same found
+			//	}
+			//	else
+			//		continue;
+			//}
 		}
-		r->Buttons.clear();
+		//r->Buttons.clear();
 		delete[] bcaps_buf;
 	}
 
 	void PrepareReportInfo()
 	{
-		PrepareReportInfo(HidP_Input, &inputReport, capabilities.InputReportByteLength);
-		PrepareReportInfo(HidP_Output, &outputReport, capabilities.OutputReportByteLength);
-		PrepareReportInfo(HidP_Feature, &featureReport, capabilities.FeatureReportByteLength);
+		_PrepareReportInfo(HidP_Input, &inputReport, capabilities.InputReportByteLength);
+		_PrepareReportInfo(HidP_Output, &outputReport, capabilities.OutputReportByteLength);
+		_PrepareReportInfo(HidP_Feature, &featureReport, capabilities.FeatureReportByteLength);
 	}
 };
 
@@ -228,7 +245,7 @@ public:
 	static BOOL test(Path devicePath, USHORT vendorId, USHORT productId, USAGE usagePage, USAGE usage)
 	{
 		Device dev;
-		dev.Open(devicePath);
+		dev.pImpl->open(devicePath, FALSE);
 
 		BOOL vid_ok = vendorId == 0 || vendorId == dev.GetVendorId();
 		BOOL pid_ok = productId == 0 || productId == dev.GetProductId();
@@ -239,22 +256,32 @@ public:
 		return vid_ok && pid_ok && page_ok && usage_ok;
 	}
 
-	Tstring device_path;
-	HIDD_ATTRIBUTES      Attributes;
-	std::unique_ptr<Info> info;
+	//!TEST
+	std::FILE *file_;
+	//!TEST
 
-	std::queue<std::vector<BYTE>> m_fifo;
+	Tstring device_path_;
+	std::unique_ptr<Info> info_;
+	std::mutex mtx_;
 
-	static int copyBuffer(void *dst, int dst_size, const void *src, int src_size)
+	std::queue<std::vector<BYTE>> fifo_;
+
+	static int copyBuffer(std::vector<BYTE> *dst, std::vector<BYTE> const *src)
 	{
-		int cnt = dst_size < src_size ? dst_size : src_size;
-		memmove_s(dst, cnt, src, cnt);
+		int cnt = dst->size() < src->size() ? dst->size() : src->size();
+		memmove_s(dst->data(), cnt, src->data(), cnt);
 		return cnt;
 	}
 
-	Device *self;
+	Device *self_;
+	BOOL is_requested_stop_reading_;
+	std::thread reader_thread_;
 
-	Impl(Device *pSelf) :self(pSelf)
+	typedef std::function<void(std::vector<BYTE> const &)> handler_bytearray;
+
+	std::unique_ptr<handler_bytearray> OnInput;
+
+	Impl(Device *pSelf) :self_(pSelf), file_(NULL)
 	{
 	}
 
@@ -263,19 +290,24 @@ public:
 		close();
 	}
 
-	BOOL open(Path devicePath)
+	static const DWORD TIMEOUT_DEFAULT = 1000; // 1sec
+
+	BOOL open(Path devicePath, BOOL with_detailed_caps = TRUE)
 	{
 		close();
 		
-		HANDLE h = ::CreateFile(devicePath.m_str.c_str(),
+		HANDLE h = ::CreateFile(devicePath.tstr.c_str(),
 								(GENERIC_READ|GENERIC_WRITE), (FILE_SHARE_READ | FILE_SHARE_WRITE), 
 								NULL,        // no SECURITY_ATTRIBUTES structure
 								OPEN_EXISTING, // No special create flags
 								0,   // Open device as non-overlapped so we can get data
 								NULL);       // No template file
+		file_ = std::fopen(devicePath.str.c_str(), "rb+");
 		if (h != INVALID_HANDLE_VALUE)
 		{
-			info.reset(new Info(h));
+			info_.reset(new Info(h, with_detailed_caps));
+			setTimeout(TIMEOUT_DEFAULT, TIMEOUT_DEFAULT);
+
 			return TRUE;
 		}
 
@@ -284,237 +316,262 @@ public:
 
 	BOOL is_opened(void)
 	{
-		Lock();
-		BOOL b = pDevice != NULL &&
-			pDevice->HidDevice != INVALID_HANDLE_VALUE &&
-			pDevice->HidDevice != 0;
-		Unlock();
+		std::lock_guard<std::mutex> lock(mtx_);
 
-		return b;
+		return (bool)info_ && info_->hDevice != INVALID_HANDLE_VALUE;
 	}
 
-	BOOL is_opened(LPCTSTR devicePath)
+	BOOL is_opened(Path const &p)
 	{
-		Lock();
-		Tstring path = devicePath;
-		BOOL b = (path == m_path);
-		Unlock();
-
-		return b;
+		std::lock_guard<std::mutex> lock(mtx_);
+		return p.tstr == device_path_;
 	}
 
 	void close(void)
 	{
-		if (pDevice)
+		if (info_)
 		{
-			if (Updater::IsAlive())
-				Updater::EndThread(INFINITE);
+			std::lock_guard<std::mutex> lock(mtx_);
+			//if (Updater::IsAlive())
+			//	Updater::EndThread(INFINITE);
 
-			Lock();
-			if (hEvent != INVALID_HANDLE_VALUE)
+			//if (hEvent != INVALID_HANDLE_VALUE)
+			//{
+			//	::ClosePath(hEvent);
+			//	hEvent = INVALID_HANDLE_VALUE;
+			//}
+
+			std::fclose(file_);
+			file_ = NULL;
+
+			HANDLE h = info_->hDevice;
+			info_.reset();
+			::CloseHandle(h);
+			device_path_.clear();
+		}
+	}
+
+	BOOL setFeature(std::vector<BYTE> const &src)
+	{
+
+		BOOL bRet = (bool)info_;
+		if (bRet)
+		{
+			std::lock_guard<std::mutex> lock(mtx_);
+			copyBuffer(&info_->featureReport.buffer, &src);
+			bRet = (BOOL)::HidD_SetFeature(
+				info_->hDevice, 
+				info_->featureReport.buffer.data(), info_->capabilities.FeatureReportByteLength);
+		}
+
+		return bRet;
+	}
+
+	BOOL getFeature(BYTE report_id, std::vector<BYTE> *dst = NULL)
+	{
+
+		BOOL bRet = (bool)info_;
+		if (bRet)
+		{
+			std::lock_guard<std::mutex> lock(mtx_);
+			info_->featureReport.buffer[0] = report_id;
+			bRet = ::HidD_GetFeature(info_->hDevice,
+				info_->featureReport.buffer.data(), info_->capabilities.FeatureReportByteLength);
+			if (dst != NULL)
 			{
-				::ClosePath(hEvent);
-				hEvent = INVALID_HANDLE_VALUE;
+				dst->assign(info_->featureReport.buffer.begin(), info_->featureReport.buffer.end());
 			}
-			::CloseHidDevice(pDevice);
-			delete pDevice;
-			pDevice = NULL;
-			m_path.clear();
-			Unlock();
 		}
-	}
 
-	BOOL setFeature(const BYTE * src, int size)
-	{
-		Lock();
-		BOOL bRet = (pDevice != NULL &&
-			pDevice->FeatureReportBuffer != NULL &&
-			pDevice->Caps.FeatureReportByteLength != 0 &&
-			size <= (int)pDevice->Caps.FeatureReportByteLength);
-		if (bRet)
-		{
-			if (pDevice->FeatureReportBuffer != src)
-				copyBuffer(pDevice->FeatureReportBuffer, pDevice->Caps.FeatureReportByteLength, src, size);
-			bRet = (BOOL)::SetFeatureReportWithSize(pDevice, size);
-		}
-		Unlock();
 		return bRet;
 	}
 
-	BOOL getFeature(LPBYTE dst = NULL, int size = 0)
+	BOOL write(std::vector<BYTE> const &src)
 	{
-		if (dst == NULL)
-		{
-			dst = pDevice->FeatureReportBuffer;
-			size = pDevice->Caps.FeatureReportByteLength;
-		}
-		else
-		{
-			pDevice->FeatureReportBuffer[0] = dst[0];
-			if (size == 0)
-				size = pDevice->Caps.FeatureReportByteLength;
-		}
-		Lock();
-		BOOL bRet = (pDevice != NULL &&
-			pDevice->FeatureReportBuffer != NULL &&
-			pDevice->Caps.FeatureReportByteLength != 0);
+
+		BOOL bRet = (bool)info_;
 		if (bRet)
 		{
-			bRet = ::GetFeatureReportWithSize(pDevice, size);
-			if (bRet && dst != pDevice->FeatureReportBuffer)
-				copyBuffer(dst, size, pDevice->FeatureReportBuffer, pDevice->Caps.FeatureReportByteLength);
+			std::lock_guard<std::mutex> lock(mtx_);
+			copyBuffer(&info_->outputReport.buffer, &src);
+			DWORD bytesWritten = 0;
+			bRet = ::WriteFile(
+				info_->hDevice,
+				info_->outputReport.buffer.data(), info_->capabilities.OutputReportByteLength,
+				&bytesWritten, NULL) && bytesWritten == info_->capabilities.OutputReportByteLength;
 		}
 
-		Unlock();
 		return bRet;
-	}
 
-	BOOL write(const BYTE * src, int size)
-	{
-		Lock();
-		BOOL bRet = (pDevice != NULL &&
-			pDevice->OutputReportBuffer != NULL &&
-			pDevice->Caps.OutputReportByteLength != 0 &&
-			size <= (int)pDevice->Caps.OutputReportByteLength);
-		if (bRet)
-		{
-			if (pDevice->OutputReportBuffer != src)
-				copyBuffer(pDevice->OutputReportBuffer, pDevice->Caps.OutputReportByteLength, src, size);
-			bRet = (BOOL)::WriteOutputReport(pDevice);
-		}
-		Unlock();
-		return bRet;
 	}
 
 	BOOL startFifo(void)
 	{
-		if (pDevice == NULL ||
-			pDevice->InputReportBuffer == NULL ||
-			pDevice->Caps.InputReportByteLength == 0) return FALSE;
+		if (!info_) return FALSE;
 
-		Lock();
-		::HidD_FlushQueue(pDevice->HidDevice);
-		Unlock();
-		return Updater::StartThread();
+		std::lock_guard<std::mutex> lock(mtx_);
+
+		::HidD_FlushQueue(info_->hDevice);
+
+		is_requested_stop_reading_ = FALSE;
+		std::thread th(std::bind(&Impl::read_async, this));
+
+		reader_thread_.swap(th);
+		return reader_thread_.joinable();
 	}
 
 	void stopFifo(void)
 	{
-		if (pDevice == NULL ||
-			pDevice->InputReportBuffer == NULL ||
-			pDevice->Caps.InputReportByteLength == 0) return;
+		if (!info_) return;
 
-		Updater::EndThread();
-		Lock();
-		::HidD_FlushQueue(pDevice->HidDevice);
-		Unlock();
+		is_requested_stop_reading_ = TRUE;
+		reader_thread_.join();
+		if (!reader_thread_.joinable())
+		{
+			std::lock_guard<std::mutex> lock(mtx_);
+			::HidD_FlushQueue(info_->hDevice);
+		}
 	}
 
 	BOOL usesFifo(void)
 	{
-		return Updater::IsAlive();
+		return reader_thread_.joinable();
 	}
 
-	BOOL read(LPBYTE dst = NULL, int size = 0)
+	BOOL setTimeout(DWORD ms_timeout_read, DWORD ms_timeout_write)
 	{
-		if (dst == NULL)
-		{
-			dst = pDevice->InputReportBuffer;
-			size = pDevice->Caps.InputReportByteLength;
-		}
-		Lock();
-		BOOL bRet = (pDevice != NULL &&
-			pDevice->InputReportBuffer != NULL &&
-			pDevice->Caps.InputReportByteLength != 0 &&
-			size >= (int)pDevice->Caps.InputReportByteLength);
+		if (!info_) return FALSE;
+		std::lock_guard<std::mutex> lock(mtx_);
+
+		COMMTIMEOUTS to = { 0 };
+		to.ReadTotalTimeoutConstant = ms_timeout_read;
+		to.WriteTotalTimeoutConstant = ms_timeout_write;
+		
+		return SetCommTimeouts(info_->hDevice, &to);
+	}
+
+	BOOL getTimeout(DWORD *ms_timeout_read, DWORD *ms_timeout_write)
+	{
+		if (!info_) return FALSE;
+		std::lock_guard<std::mutex> lock(mtx_);
+
+		COMMTIMEOUTS to;
+		BOOL ret = GetCommTimeouts(info_->hDevice, &to);
+		*ms_timeout_read  = to.ReadTotalTimeoutConstant;
+		*ms_timeout_write = to.WriteTotalTimeoutConstant;
+
+		return ret;
+	}
+
+	BOOL read(std::vector<BYTE> *dst = NULL)
+	{
+		BOOL bRet = (bool)info_;
 		if (bRet)
 		{
-			if (Updater::IsAlive())
-			{ // Asynchronous reading
-				bRet = m_fifo.size() > 0;
-				if (bRet)
-				{ // Queued data exist
-					std::vector<BYTE> data = m_fifo.front();
-					m_fifo.pop();
-					copyBuffer(dst, size, &data.front(), data.size());
-				}
-			}
-			else
-			{ // Synchronous reading
-				bRet = ::ReadInputReport(pDevice);
-				if (bRet && dst != pDevice->InputReportBuffer)
-					copyBuffer(dst, size, pDevice->InputReportBuffer, pDevice->Caps.InputReportByteLength);
-			}
-		}
-		Unlock();
-		return bRet;
-	}
-
-	BOOL readAsync(void)
-	{
-		Lock();
-		BOOL bRet = (pDevice != NULL &&
-			pDevice->InputReportBuffer != NULL &&
-			pDevice->Caps.InputReportByteLength != 0 &&
-			!Updater::IsDying());
-		if (bRet)
-		{
-			if (hEvent != INVALID_HANDLE_VALUE) ::ClosePath(hEvent);
-			hEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
-			bRet = (hEvent != INVALID_HANDLE_VALUE && (BOOL)::ReadInputReportOverlapped(pDevice, hEvent));
-		}
-		Unlock();
-		return bRet;
-	}
-
-	DWORD waitForRead(LPBYTE dst, int size, DWORD timeout)
-	{
-		if (pDevice == NULL ||
-			pDevice->InputReportBuffer == NULL ||
-			pDevice->Caps.InputReportByteLength == 0 ||
-			hEvent == INVALID_HANDLE_VALUE ||
-			Updater::IsDying()) return WAIT_FAILED;
-
-		DWORD waitStatus = ::WaitForSingleObject(hEvent, timeout);
-		Lock();
-		if (waitStatus != WAIT_TIMEOUT)
-		{
-			::ClosePath(hEvent);
-			hEvent = INVALID_HANDLE_VALUE;
-		}
-		if (waitStatus == WAIT_OBJECT_0 && size >= (int)pDevice->Caps.InputReportByteLength)
-		{
-			copyBuffer(dst, size, pDevice->InputReportBuffer, pDevice->Caps.InputReportByteLength);
-		}
-		Unlock();
-
-		return waitStatus;
-	}
-
-	virtual void onUpdate(void)
-	{
-		// if hEvent is not invalid, last waitForRead returned WAIT_TIMEOUT
-		if (hEvent != INVALID_HANDLE_VALUE || readAsync())
-		{
-			int buf_size = pDevice->Caps.InputReportByteLength;
-			std::vector<BYTE> data(buf_size);
-			if (waitForRead(&data.front(), buf_size, 1) == WAIT_OBJECT_0)
+			std::lock_guard<std::mutex> lock(mtx_);
+			DWORD bytesRead = 0;
+			bRet = ::ReadFile(info_->hDevice,
+				info_->inputReport.buffer.data(), info_->capabilities.InputReportByteLength,
+				&bytesRead, NULL);
+			if (dst != NULL)
 			{
-				//KzUtils::Trace(_T("waitForRead() == WAIT_OBJECT_0"));
-				Lock();
-				if (pDevice != NULL &&
-					pDevice->InputReportBuffer != NULL &&
-					pDevice->Caps.InputReportByteLength != 0 &&
-					!Updater::IsDying())
-				{
-					m_fifo.push(data);
-					self->OnAsyncInputEvent(*self, data.data());
-					self->OnAsyncInput();
-				}
-				Unlock();
+				dst->assign(info_->inputReport.buffer.begin(), info_->inputReport.buffer.end());
 			}
-			//KzUtils::Trace(_T("waitForRead() != WAIT_OBJECT_0"));
 		}
+
+		return bRet;
+	}
+
+	//(LPBYTE dst = NULL, int size = 0)
+	//{
+	//	if (dst == NULL)
+	//	{
+	//		dst = pDevice->InputReportBuffer;
+	//		size = pDevice->Caps.InputReportByteLength;
+	//	}
+	//	Lock();
+	//	BOOL bRet = (pDevice != NULL &&
+	//		pDevice->InputReportBuffer != NULL &&
+	//		pDevice->Caps.InputReportByteLength != 0 &&
+	//		size >= (int)pDevice->Caps.InputReportByteLength);
+	//	if (bRet)
+	//	{
+	//		if (Updater::IsAlive())
+	//		{ // Asynchronous reading
+	//			bRet = fifo_.size() > 0;
+	//			if (bRet)
+	//			{ // Queued data exist
+	//				std::vector<BYTE> data = fifo_.front();
+	//				m_fifo.pop();
+	//				copyBuffer(dst, size, &data.front(), data.size());
+	//			}
+	//		}
+	//		else
+	//		{ // Synchronous reading
+	//			bRet = ::ReadInputReport(pDevice);
+	//			if (bRet && dst != pDevice->InputReportBuffer)
+	//				copyBuffer(dst, size, pDevice->InputReportBuffer, pDevice->Caps.InputReportByteLength);
+	//		}
+	//	}
+	//	Unlock();
+	//	return bRet;
+	//}
+
+	//BOOL readAsync(void)
+	//{
+	//	Lock();
+	//	BOOL bRet = (pDevice != NULL &&
+	//		pDevice->InputReportBuffer != NULL &&
+	//		pDevice->Caps.InputReportByteLength != 0 &&
+	//		!Updater::IsDying());
+	//	if (bRet)
+	//	{
+	//		if (hEvent != INVALID_HANDLE_VALUE) ::ClosePath(hEvent);
+	//		hEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+	//		bRet = (hEvent != INVALID_HANDLE_VALUE && (BOOL)::ReadInputReportOverlapped(pDevice, hEvent));
+	//	}
+	//	Unlock();
+	//	return bRet;
+	//}
+
+	//DWORD waitForRead(LPBYTE dst, int size, DWORD timeout)
+	//{
+	//	if (pDevice == NULL ||
+	//		pDevice->InputReportBuffer == NULL ||
+	//		pDevice->Caps.InputReportByteLength == 0 ||
+	//		hEvent == INVALID_HANDLE_VALUE ||
+	//		Updater::IsDying()) return WAIT_FAILED;
+
+	//	DWORD waitStatus = ::WaitForSingleObject(hEvent, timeout);
+	//	Lock();
+	//	if (waitStatus != WAIT_TIMEOUT)
+	//	{
+	//		::ClosePath(hEvent);
+	//		hEvent = INVALID_HANDLE_VALUE;
+	//	}
+	//	if (waitStatus == WAIT_OBJECT_0 && size >= (int)pDevice->Caps.InputReportByteLength)
+	//	{
+	//		copyBuffer(dst, size, pDevice->InputReportBuffer, pDevice->Caps.InputReportByteLength);
+	//	}
+	//	Unlock();
+
+	//	return waitStatus;
+	//}
+
+	void read_async(void)
+	{
+		do
+		{
+			if (read())
+			{
+				std::lock_guard<std::mutex> lock(mtx_);
+				fifo_.push(info_->inputReport.buffer);
+				if (OnInput) (*OnInput)(info_->inputReport.buffer);
+			}
+			std::this_thread::yield();
+		} while (!is_requested_stop_reading_);
+
+		is_requested_stop_reading_ = FALSE;
 	}
 };
 
@@ -525,46 +582,12 @@ std::vector<Device::Path> Device::Enumerate()
 
 std::vector<Device::Path> Device::Search(USHORT vendor_id, USHORT product_id, USAGE usage_page, USAGE usage)
 {
-	return Impl::search(vendor_id, product_id, usage_page, usage)
+	return Impl::search(vendor_id, product_id, usage_page, usage);
 }
 
-BOOL Device::Test(Device::Path const &p,
-	USHORT vendor_id = 0x0000, USHORT product_id = 0x0000, USAGE usage_page = 0x0000, USAGE usage = 0x0000)
+BOOL Device::Test(Device::Path const &p, USHORT vendor_id, USHORT product_id, USAGE usage_page, USAGE usage)
 {
 	return Impl::test(p, vendor_id, product_id, usage_page, usage);
-}
-
-static std::map<HANDLE, HDEVNOTIFY> registeredPaths;
-
-BOOL Device::RegisterNotification(HWND hwnd)
-{
-	if (registeredPaths.count(hwnd) != 0) return FALSE;
-
-	DEV_BROADCAST_DEVICEINTERFACE    broadcastInterface;
-
-	broadcastInterface.dbcc_size = sizeof(DEV_BROADCAST_DEVICEINTERFACE);
-	broadcastInterface.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
-	::HidD_GetHidGuid(&broadcastInterface.dbcc_classguid);
-
-	HANDLE handle = ::RegisterDeviceNotification(hwnd,
-		&broadcastInterface,
-		DEVICE_NOTIFY_WINDOW_HANDLE
-	);
-	if (handle != INVALID_HANDLE_VALUE)
-	{
-		registeredPaths[hwnd] = handle;
-		return TRUE;
-	}
-	else return FALSE;
-}
-
-void Device::UnregisterNotification(HWND hwnd)
-{
-	if (registeredPaths.count(hwnd) != 0)
-	{
-		::UnregisterDeviceNotification(registeredPaths[hwnd]);
-		registeredPaths.erase(hwnd);
-	}
 }
 
 Device::Device() :
@@ -586,7 +609,7 @@ BOOL Device::IsOpened(void) const
 	return pImpl->is_opened();
 }
 
-BOOL Device::IsOpenedPath(LPCTSTR devicePath) const
+BOOL Device::IsOpenedPath(Device::Path const &devicePath) const
 {
 	return pImpl->is_opened(devicePath);
 }
@@ -596,69 +619,67 @@ void Device::Close(void)
 	pImpl->close();
 }
 
-BOOL Device::SetFeature(const BYTE * src, int size)
+BOOL Device::SetFeature(std::vector<BYTE> const &src)
 {
-	return pImpl-> setFeature(src, size);
+	return pImpl-> setFeature(src);
 }
 
-BOOL Device::GetFeature(LPBYTE dst, int size)
+BOOL Device::GetFeature(std::vector<BYTE> * dst)
 {
-	return pImpl->getFeature(dst, size);
+	return pImpl->getFeature((*dst)[0], dst);
 }
 
-const BYTE * Device::GetFeature(BYTE id)
+std::vector<BYTE> const * Device::GetFeature(BYTE id)
 {
-	KzUtils::Assert(pImpl->pDevice != NULL);
-	pImpl->pDevice->FeatureReportBuffer[0] = id;
-	return pImpl->getFeature() ? pImpl->pDevice->FeatureReportBuffer : NULL;
+	return pImpl->getFeature(id)? &pImpl->info_->featureReport.buffer: NULL;
 }
 
-BOOL Device::Write(const BYTE * src, int size)
+BOOL Device::Write(std::vector<BYTE> const &src)
 {
-	return pImpl->write(src, size);
+	return pImpl->write(src);
 }
 
-BOOL Device::Read(LPBYTE dst, int size)
+BOOL Device::Read(std::vector<BYTE> * dst)
 {
-	return pImpl->read(dst, size);
+	return pImpl->read(dst);
 }
 
-const BYTE * Device::Read(void)
+std::vector<BYTE> const * Device::Read(void)
 {
-	return pImpl->read() ? pImpl->pDevice->InputReportBuffer : NULL;
+	return pImpl->read() ? &pImpl->info_->inputReport.buffer : NULL;
 }
 
 USHORT Device::GetVendorId(void) const
 {
-	return pImpl->info->attributes.VendorID;
+	return pImpl->info_->attributes.VendorID;
 }
 
 USHORT Device::GetProductId(void) const
 {
-	return pImpl->info->attributes.ProductID;
+	return pImpl->info_->attributes.ProductID;
 }
 
 USHORT Device::GetUsagePage(void) const
 {
-	return pImpl->info->capabilities.UsagePage;
+	return pImpl->info_->capabilities.UsagePage;
 }
 
 USHORT Device::GetUsage(void) const
 {
-	return pImpl->info->capabilities.Usage;
+	return pImpl->info_->capabilities.Usage;
 }
 
 USHORT Device::GetFeatureReportLength(void) const
 {
-	return pImpl->info->capabilities.FeatureReportByteLength;
+	return pImpl->info_->capabilities.FeatureReportByteLength;
 }
 
 USHORT Device::GetInputReportLength(void) const
 {
-	return pImpl->info->capabilities.InputReportByteLength;
+	return pImpl->info_->capabilities.InputReportByteLength;
 }
 
 USHORT Device::GetOutputReportLength(void) const
 {
-	return pImpl->info->capabilities.OutputReportByteLength;
+	return pImpl->info_->capabilities.OutputReportByteLength;
 }
