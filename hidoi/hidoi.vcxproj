@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{D3E0D4B7-8187-4A07-93DD-D6F7AB7FE621}</ProjectGuid>
+    <ProjectGuid>{7E672922-8A68-4864-B9D6-75A78D5A34F0}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>wahidx</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
