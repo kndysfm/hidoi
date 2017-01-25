@@ -13,12 +13,6 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="ソース ファイル\wdk">
-      <UniqueIdentifier>{6fe17506-77e2-4beb-8bf8-1f73f42bca21}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダー ファイル\wdk">
-      <UniqueIdentifier>{3b5819ee-51ab-41ca-8d6c-4c4289493fc1}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -27,14 +21,8 @@
     <ClInclude Include="device.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="wahidx.h">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
     <ClInclude Include="hidusagex.h">
       <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
-    <ClInclude Include="wdk\hid.h">
-      <Filter>ソース ファイル\wdk</Filter>
     </ClInclude>
     <ClInclude Include="tstring.h">
       <Filter>ヘッダー ファイル</Filter>
@@ -42,18 +30,21 @@
     <ClInclude Include="utils.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="parser.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="hidoi.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="device.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="wdk\pnp.c">
-      <Filter>ヘッダー ファイル\wdk</Filter>
-    </ClCompile>
-    <ClCompile Include="wdk\report.c">
-      <Filter>ヘッダー ファイル\wdk</Filter>
-    </ClCompile>
     <ClCompile Include="utils.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="parser.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>

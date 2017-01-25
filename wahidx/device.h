@@ -1,16 +1,23 @@
 #pragma once
 
-#include <memory>
-#include <vector>
+#include "hidoi.h"
 
-namespace wahidx
+namespace hidoi
 {
 
 class Device
 {
 public:
 
-	class Path;
+	struct Path 
+	{ 
+		struct Impl;
+		Impl *pImpl; 
+		Path & operator=(Path const&);
+		Path(Path const&);
+		Path(LPCTSTR ctstr);
+		~Path(); 
+	};
 
 	static std::vector<Path> Enumerate();
 
@@ -42,6 +49,9 @@ private:
 
 	struct Impl;
 	std::unique_ptr<Impl> pImpl;
+
+	Device(Device const&) = delete;
+	Device& operator=(Device const&) = delete;
 
 public:
 

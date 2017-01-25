@@ -1,6 +1,6 @@
 #pragma once
 
-#include <windows.h>
+#include "hidoi.h"
 
 namespace wahidx
 {
@@ -12,4 +12,4 @@ namespace wahidx
 		static void UnregisterNotification(HWND hwnd);
 
 	};
-};
+} // namespace wahidx
