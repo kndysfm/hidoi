@@ -3,6 +3,8 @@
 
 #include "hidoi.h"
 
+#include <functional>
+
 namespace hidoi
 {
 
@@ -17,15 +19,19 @@ namespace hidoi
 		Watcher(Watcher &&) = delete;	// move constructor
 		Watcher & operator=(Watcher const &) = delete; // copy operator
 		Watcher & operator=(Watcher &&) = delete; // move operator
+		Watcher();
+		virtual ~Watcher();
 
 	public: // methods
-		Watcher();
-
-		virtual ~Watcher();
+		static Watcher &GetInstance(void); // singleton pattern
 
 		BOOL Start();
 
 		void Stop();
+
+		typedef void (DeviceChangeEventListener)(DWORD_PTR dwData);
+		BOOL RegisterDeviceChangeEventListener(UINT uEventType, std::function<DeviceChangeEventListener>  const &listener);
+
 	};
 
 };

@@ -47,8 +47,6 @@ Device::Path::Path(Device::Path const& p) : pImpl(new Device::Path::Impl(p.pImpl
 Device::Path & Device::Path::operator=(Device::Path const& l)
 {
 	*this->pImpl = *l.pImpl;
-	//this->pImpl->str = l.pImpl->str;
-	//this->pImpl->tstr = l.pImpl->tstr;
 	return *this;
 }
 

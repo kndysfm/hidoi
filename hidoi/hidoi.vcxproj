@@ -140,6 +140,7 @@
     <ClInclude Include="device.h" />
     <ClInclude Include="hidusagex.h" />
     <ClInclude Include="parser.h" />
+    <ClInclude Include="ri.h" />
     <ClInclude Include="tstring.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="hidoi.h" />
@@ -148,6 +149,7 @@
   <ItemGroup>
     <ClCompile Include="device.cpp" />
     <ClCompile Include="parser.cpp" />
+    <ClCompile Include="ri.cpp" />
     <ClCompile Include="utils.cpp" />
     <ClCompile Include="watcher.cpp" />
   </ItemGroup>

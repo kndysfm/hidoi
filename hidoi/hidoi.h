@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <vector>
+#include <functional>
 #include "device.h"
 #include "parser.h"
 #include "utils.h"
