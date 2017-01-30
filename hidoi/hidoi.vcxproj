@@ -143,11 +143,13 @@
     <ClInclude Include="tstring.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="hidoi.h" />
+    <ClInclude Include="watcher.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="device.cpp" />
     <ClCompile Include="parser.cpp" />
     <ClCompile Include="utils.cpp" />
+    <ClCompile Include="watcher.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

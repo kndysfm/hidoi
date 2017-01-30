@@ -46,8 +46,9 @@ Device::Path::Path(Device::Path const& p) : pImpl(new Device::Path::Impl(p.pImpl
 
 Device::Path & Device::Path::operator=(Device::Path const& l)
 {
-	this->pImpl->str = l.pImpl->str;
-	this->pImpl->tstr = l.pImpl->tstr;
+	*this->pImpl = *l.pImpl;
+	//this->pImpl->str = l.pImpl->str;
+	//this->pImpl->tstr = l.pImpl->tstr;
 	return *this;
 }
 
@@ -189,15 +190,18 @@ public:
 	static BOOL test(Path const & devicePath, USHORT vendorId, USHORT productId, USAGE usagePage, USAGE usage)
 	{
 		Device dev;
-		dev.pImpl->open(devicePath, FALSE);
+		if (dev.pImpl->open(devicePath, FALSE))
+		{
+			BOOL vid_ok = vendorId == 0 || vendorId == dev.GetVendorId();
+			BOOL pid_ok = productId == 0 || productId == dev.GetProductId();
+			BOOL page_ok = usagePage == 0 || usagePage == dev.GetUsagePage();
+			BOOL usage_ok = usage == 0 || usage == dev.GetUsage();
 
-		BOOL vid_ok = vendorId == 0 || vendorId == dev.GetVendorId();
-		BOOL pid_ok = productId == 0 || productId == dev.GetProductId();
-		BOOL page_ok = usagePage == 0 || usagePage == dev.GetUsagePage();
-		BOOL usage_ok = usage == 0 || usage == dev.GetUsage();
+			dev.Close();
+			return vid_ok && pid_ok && page_ok && usage_ok;
+		}
 
-		dev.Close();
-		return vid_ok && pid_ok && page_ok && usage_ok;
+		return FALSE;
 	}
 
 	//!TEST

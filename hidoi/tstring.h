@@ -6,6 +6,7 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 
 //! Declarations to use TCHAR typed string class in an implementation file
 //! Do NOT include this file in HEADER file
@@ -42,4 +43,12 @@ namespace { \
 	/*Tstring vector*/ \
 	template class std::vector<std::basic_string<_TCHAR>>;\
 	typedef std::vector<std::basic_string<_TCHAR>> TstringVector; \
+}
+
+namespace {
+#ifdef _UNICODE
+	auto & const Tcout = std::wcout;
+#else
+	auto & const Tcout = std::cout;
+#endif
 }

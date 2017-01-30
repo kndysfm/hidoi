@@ -2,7 +2,7 @@
 
 #include "hidoi.h"
 
-namespace wahidx
+namespace hidoi
 {
 	namespace utils
 	{

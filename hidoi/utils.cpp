@@ -6,7 +6,7 @@ EXTERN_C
 }
 #include <map>
 
-using namespace wahidx::utils;
+using namespace hidoi::utils;
 
 
 static std::map<HANDLE, HDEVNOTIFY> registeredHandles;
