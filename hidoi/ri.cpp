@@ -1,12 +1,14 @@
 #include "ri.h"
 #include <mutex>
+#include <map>
+#include <list>
 
 #include "tstring.h"
 USING_TCHAR_STRING;
 
 using namespace hidoi;
 
-struct RawInput::Impl
+namespace
 {
 	std::mutex mtx_;
 
@@ -14,14 +16,23 @@ struct RawInput::Impl
 
 	struct rid_info_t
 	{
-		HANDLE handle;
 		Tstring name;
 		RID_DEVICE_INFO info;
 	};
 
-	std::vector<rid_info_t> rid_infos_;
+	std::map<HANDLE, rid_info_t> rid_infos_;
 
-	void update()
+	std::map<HWND, std::list<HANDLE>> registered_handles_;
+
+}
+
+struct RawInput::Impl
+{
+
+	HANDLE handle_;
+	rid_info_t info_;
+
+	static void update()
 	{
 		std::lock_guard<std::mutex> lock(mtx_);
 
@@ -43,7 +54,6 @@ struct RawInput::Impl
 			{
 				rid_info_t rid;
 				rid.info = inf;
-				rid.handle = list.hDevice;
 
 				::GetRawInputDeviceInfo(list.hDevice, RIDI_DEVICENAME, NULL, &info_size);
 				_TCHAR *name = new _TCHAR[info_size];
@@ -51,80 +61,139 @@ struct RawInput::Impl
 				rid.name = name;
 				delete[] name;
 
-				rid_infos_.push_back(rid);
+				rid_infos_[list.hDevice] = rid;
 			}
 		}
-
 	}
 
-	rid_info_t const * search(RID_DEVICE_INFO_HID const &inf_hid)
+	static std::vector<RawInput> get_handles()
 	{
 		std::lock_guard<std::mutex> lock(mtx_);
-		for (auto inf : rid_infos_)
+		std::vector<RawInput> ris;
+		for (auto const &inf : rid_infos_)
 		{
-			if ((!inf_hid.dwVendorId || inf_hid.dwVendorId == inf.info.hid.dwVendorId) &&
-				(!inf_hid.dwProductId || inf_hid.dwProductId == inf.info.hid.dwProductId) &&
-				(!inf_hid.dwVersionNumber || inf_hid.dwVersionNumber == inf.info.hid.dwVersionNumber) &&
-				(!inf_hid.usUsagePage || inf_hid.usUsagePage == inf.info.hid.usUsagePage) &&
-				(!inf_hid.usUsage || inf_hid.usUsage == inf.info.hid.usUsage))
+			RawInput ri;
+			ri.pImpl->handle_ = inf.first;
+			ri.pImpl->info_.name = inf.second.name;
+			ri.pImpl->info_.info = inf.second.info;
+			ris.push_back(ri);
+		}
+		return ris;
+	}
+
+	static std::vector<RawInput> search(USHORT vendor_id, USHORT product_id, USAGE usage_page, USAGE usage)
+	{
+		std::lock_guard<std::mutex> lock(mtx_);
+		std::vector<RawInput> ris;
+		for (auto const &inf: rid_infos_)
+		{
+			auto const &inf_hid = inf.second.info.hid;
+			if ((vendor_id	== 0x0000 || vendor_id	== inf_hid.dwVendorId) &&
+				(product_id	== 0x0000 || product_id	== inf_hid.dwProductId) &&
+				(usage_page	== 0x0000 || usage_page	== inf_hid.usUsagePage) &&
+				(usage		== 0x0000 || usage		== inf_hid.usUsage))
 			{
-				return &inf;
+				RawInput ri;
+				ri.pImpl->handle_ = inf.first;
+				ri.pImpl->info_.name = inf.second.name;
+				ri.pImpl->info_.info = inf.second.info;
+				ris.push_back(ri);
 			}
 		}
-
-		return nullptr;
+		return ris;
 	}
 
-	RID_DEVICE_INFO_HID const *search(HANDLE h)
+	static std::vector<RawInput> search(HANDLE handle)
 	{
 		std::lock_guard<std::mutex> lock(mtx_);
-		for (auto inf : rid_infos_)
+		std::vector<RawInput> ris;
+		for (auto const &inf: rid_infos_)
 		{
-			if (inf.handle == h) return &inf.info.hid;
+			auto const &inf_hid = inf.second.info.hid;
+			if (inf.first == handle)
+			{
+				RawInput ri;
+				ri.pImpl->handle_ = inf.first;
+				ri.pImpl->info_.name = inf.second.name;
+				ri.pImpl->info_.info = inf.second.info;
+				ris.push_back(ri);
+			}
 		}
-
-		return nullptr;
+		return ris;
 	}
 
-	BOOL register_rid(HWND hWnd, RID_DEVICE_INFO_HID const &inf_hid)
+	BOOL test(USHORT vendor_id, USHORT product_id, USAGE usage_page, USAGE usage)
+	{
+		auto const &inf_hid = info_.info.hid;
+		if ((vendor_id == 0x0000 || vendor_id == inf_hid.dwVendorId) &&
+			(product_id == 0x0000 || product_id == inf_hid.dwProductId) &&
+			(usage_page == 0x0000 || usage_page == inf_hid.usUsagePage) &&
+			(usage == 0x0000 || usage == inf_hid.usUsage))
+		{
+			return TRUE;
+		}
+		return FALSE;
+	}
+
+	BOOL register_rid(HWND hWnd)
 	{
 		std::lock_guard<std::mutex> lock(mtx_);
-		BOOL bRet = FALSE;
 
-		rid_info_t const *pinf = search(inf_hid);
-		if (pinf)
+		auto const &inf_hid = info_.info.hid;
+		RAWINPUTDEVICE rid;
+		rid.hwndTarget = hWnd;
+		rid.dwFlags = RIDEV_INPUTSINK;
+		rid.usUsagePage = inf_hid.usUsagePage;
+		rid.usUsage = inf_hid.usUsage;
+		if (::RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE)))
 		{
-			RAWINPUTDEVICE rid;
-			rid.hwndTarget = hWnd;
-			rid.dwFlags = RIDEV_INPUTSINK;
-			rid.usUsagePage = pinf->info.hid.usUsagePage;
-			rid.usUsage = pinf->info.hid.usUsage;
-			bRet = ::RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE));
+			registered_handles_[hWnd].push_back(handle_);
+			registered_handles_[hWnd].sort();
+			registered_handles_[hWnd].unique();
+			return TRUE;
 		}
 
-		return bRet;
+		return FALSE;
 	}
 
-	BOOL unregister_rid(HWND hWnd, RID_DEVICE_INFO_HID const &inf_hid)
+	BOOL unregister_rid(HWND hWnd)
 	{
 		std::lock_guard<std::mutex> lock(mtx_);
-		BOOL bRet = FALSE;
 
-		rid_info_t const *pinf = search(inf_hid);
-		if (pinf)
+		auto const &inf_hid = info_.info.hid;
+		RAWINPUTDEVICE rid;
+		rid.hwndTarget = hWnd;
+		rid.dwFlags = RIDEV_REMOVE;
+		rid.usUsagePage = inf_hid.usUsagePage;
+		rid.usUsage = inf_hid.usUsage;
+		if (::RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE)))
 		{
-			RAWINPUTDEVICE rid;
-			rid.hwndTarget = hWnd;
-			rid.dwFlags = RIDEV_REMOVE;
-			rid.usUsagePage = pinf->info.hid.usUsagePage;
-			rid.usUsage = pinf->info.hid.usUsage;
-			bRet = ::RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE));
+			registered_handles_[hWnd].remove(handle_);
+			return TRUE;
 		}
 
-		return bRet;
+		return FALSE;
 	}
 
-	void unregister_all(HWND hWnd)
+	BOOL is_registered(HWND hWnd)
+	{
+		for (HANDLE h : registered_handles_[hWnd])
+		{
+			if (h == handle_) return TRUE;
+		}
+		return FALSE;
+	}
+
+	BOOL is_registered()
+	{
+		for (auto const &registered : registered_handles_)
+		{
+			if (is_registered(registered.first)) return TRUE;
+		}
+		return FALSE;
+	}
+
+	static void unregister_all(HWND hWnd)
 	{
 		std::lock_guard<std::mutex> lock(mtx_);
 
@@ -132,8 +201,9 @@ struct RawInput::Impl
 		rid.hwndTarget = hWnd;
 		rid.dwFlags = RIDEV_REMOVE;
 
-		for (auto inf : rid_infos_)
+		for (auto const &itr : rid_infos_)
 		{
+			auto const &inf = itr.second;
 			switch (inf.info.dwType)
 			{
 			case RIM_TYPEHID:
@@ -151,47 +221,96 @@ struct RawInput::Impl
 			}
 			::RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE));
 		}
+		registered_handles_.erase(hWnd);
 	}
 };
 
 RawInput::RawInput(): pImpl(new Impl) { }
 
+RawInput::RawInput(RawInput const &ri) : pImpl(new Impl)
+{
+	*pImpl = *ri.pImpl;
+}
+
+RawInput & RawInput::operator=(RawInput const & ri)
+{
+	*pImpl = *ri.pImpl;
+	return *this;
+}
+
 RawInput::~RawInput() { }
 
-RawInput & RawInput::GetInstance()
+std::vector<RawInput> RawInput::Enumerate()
 {
-	static RawInput instance;
-
-	std::lock_guard<std::mutex> lock(instance.pImpl->mtx_);
-	return instance;
+	RawInput::Impl::update();
+	return RawInput::Impl::get_handles();
 }
 
-void RawInput::Update()
+std::vector<RawInput> RawInput::Search(
+	USHORT vendor_id, USHORT product_id, USAGE usage_page, USAGE usage)
 {
-	pImpl->update();
+	RawInput::Impl::update();
+	return RawInput::Impl::search(vendor_id, product_id, usage_page, usage);
 }
 
-BOOL RawInput::Search(RID_DEVICE_INFO_HID const &query)
+std::vector<RawInput> RawInput::SearchByHandle(HANDLE handle)
 {
-	return (BOOL) pImpl->search(query);
+	RawInput::Impl::update();
+	return RawInput::Impl::search(handle);
 }
 
-RID_DEVICE_INFO_HID const *RawInput::Search(HANDLE h)
+BOOL RawInput::Test(USHORT vendor_id, USHORT product_id, USAGE usage_page, USAGE usage)
 {
-	return pImpl->search(h);
+	return pImpl->test(vendor_id, product_id, usage_page, usage);
 }
 
-BOOL RawInput::Register(HWND hWnd, RID_DEVICE_INFO_HID const &query)
+BOOL RawInput::Register(HWND hWnd)
 {
-	return pImpl->register_rid(hWnd, query);
+	return pImpl->register_rid(hWnd);
 }
 
-BOOL RawInput::Unregister(HWND hWnd, RID_DEVICE_INFO_HID const &query)
+BOOL RawInput::Unregister(HWND hWnd)
 {
-	return pImpl->unregister_rid(hWnd, query);
+	return pImpl->unregister_rid(hWnd);
+}
+
+BOOL RawInput::IsRegistered()
+{
+	return pImpl->is_registered();
+}
+
+BOOL RawInput::IsRegistered(HWND hWnd)
+{
+	return pImpl->is_registered(hWnd);
 }
 
 void RawInput::UnregisterAll(HWND hWnd)
 {
-	pImpl->unregister_all(hWnd);
+	RawInput::Impl::unregister_all(hWnd);
 }
+
+USHORT RawInput::GetVendorId(void) const
+{
+	return (USHORT) pImpl->info_.info.hid.dwVendorId;
+}
+
+USHORT RawInput::GetProductId(void) const
+{
+	return (USHORT)pImpl->info_.info.hid.dwProductId;
+}
+
+USHORT RawInput::GetVersionNumber(void) const
+{
+	return (USHORT)pImpl->info_.info.hid.dwVersionNumber;
+}
+
+USAGE RawInput::GetUsagePage(void) const
+{
+	return (USAGE)pImpl->info_.info.hid.usUsagePage;
+}
+
+USAGE RawInput::GetUsage(void) const
+{
+	return (USAGE)pImpl->info_.info.hid.usUsage;
+}
+

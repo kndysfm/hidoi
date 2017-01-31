@@ -19,8 +19,6 @@ namespace hidoi
 			~Path();
 		};
 
-		class Info;
-
 	private: // types and variables
 
 		struct Impl;
@@ -55,7 +53,9 @@ namespace hidoi
 	private: // class methods
 
 		Device(Device const&) = delete;
+		Device(Device &&) = delete;
 		Device& operator=(Device const&) = delete;
+		Device& operator=(Device &&) = delete;
 
 	public: // class methods
 
@@ -77,21 +77,28 @@ namespace hidoi
 
 		std::vector<BYTE> const * GetFeature(BYTE id);
 
-		BOOL Write(std::vector<BYTE> const &src);
+		BOOL SetOutput(std::vector<BYTE> const &src);
 
-		BOOL Read(std::vector<BYTE> * dst);
+		BOOL GetInput(std::vector<BYTE> * dst);
 
-		std::vector<BYTE> const * Read(void);
+		std::vector<BYTE> const * GetInput(void);
 
-		BOOL IsAsyncReading(void) const;
+		typedef void (InputListener)(std::vector<BYTE> const &);
+		BOOL StartListeningInput(std::function<InputListener> const &listener);
+
+		BOOL IsListeningInput(void) const;
+
+		void QuitListeningInput(void);
 
 		USHORT GetVendorId(void) const;
 
 		USHORT GetProductId(void) const;
 
-		USHORT GetUsagePage(void) const;
+		USHORT GetVersionNumber(void) const;
 
-		USHORT GetUsage(void) const;
+		USAGE GetUsagePage(void) const;
+
+		USAGE GetUsage(void) const;
 
 		USHORT GetFeatureReportLength(void) const;
 

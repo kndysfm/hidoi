@@ -7,6 +7,8 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include "utils.h"
 #include "device.h"
 #include "parser.h"
-#include "utils.h"
+#include "ri.h"
+#include "watcher.h"

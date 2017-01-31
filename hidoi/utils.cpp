@@ -1,45 +1,36 @@
 #include "utils.h"
-EXTERN_C
+#include "tstring.h"
+
+#if defined(_DEBUG)
+#include <stdarg.h>
+
+void hidoi::utils::trace(LPCTSTR fmt, ...)
 {
-#include <hidsdi.h>
-#include <Dbt.h>
+	va_list arg_ptr;
+	va_start(arg_ptr, fmt);
+
+	size_t len = (1 + _tcslen(fmt)) * 8;
+	_TCHAR *str = new _TCHAR[len];
+	_vstprintf_s(str, len, fmt, arg_ptr);
+	_tcscat_s(str, len, _T("\r\n"));
+	::OutputDebugString(str);
+	delete[] str;
+
+	va_end(arg_ptr);
 }
-#include <map>
 
-using namespace hidoi::utils;
+void hidoi::utils::assert(BOOL condition, LPCTSTR message)
+{
+	if (!condition)
+	{
+		if (message) trace(_T("[Assert]: %s"), message);
+		::DebugBreak();
+	}
+}
 
-//
-//static std::map<HANDLE, HDEVNOTIFY> registeredHandles;
-//
-//BOOL RegisterNotification(HWND hwnd)
-//{
-//	if (registeredHandles.count(hwnd) != 0) return FALSE;
-//
-//	DEV_BROADCAST_DEVICEINTERFACE    broadcastInterface;
-//
-//	broadcastInterface.dbcc_size = sizeof(DEV_BROADCAST_DEVICEINTERFACE);
-//	broadcastInterface.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
-//	::HidD_GetHidGuid(&broadcastInterface.dbcc_classguid);
-//
-//	HANDLE handle = ::RegisterDeviceNotification(hwnd,
-//		&broadcastInterface,
-//		DEVICE_NOTIFY_WINDOW_HANDLE
-//	);
-//	if (handle != INVALID_HANDLE_VALUE)
-//	{
-//		registeredHandles[hwnd] = handle;
-//		return TRUE;
-//	}
-//	else return FALSE;
-//}
-//
-//void UnregisterNotification(HWND hwnd)
-//{
-//	if (registeredHandles.count(hwnd) != 0)
-//	{
-//		::UnregisterDeviceNotification(registeredHandles[hwnd]);
-//		registeredHandles.erase(hwnd);
-//	}
-//}
+#else
+void hidoi::utils::Trace(LPCTSTR fmt, ...) {}
+void Assert(BOOL expression, LPCTSTR message) { }
+#endif
 
 

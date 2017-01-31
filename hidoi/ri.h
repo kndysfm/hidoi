@@ -5,32 +5,64 @@ namespace hidoi
 {
 	class RawInput
 	{
+	public: // types and variables
+
 	private: // types and variables
 		struct Impl;
 		std::unique_ptr<Impl> pImpl;
 
 	private: // methods
-		RawInput(RawInput const &) = delete;	// copy constructor
-		RawInput(RawInput &&) = delete;	// move constructor
-		RawInput & operator=(RawInput const &) = delete; // copy operator
-		RawInput & operator=(RawInput &&) = delete; // move operator
 		RawInput();
+	public:
+		RawInput(RawInput const &);
+		RawInput & operator=(RawInput const &);
 		virtual ~RawInput();
 
-	public:
-		static RawInput &GetInstance();
+		static std::vector<RawInput> Enumerate();
 
-		void Update();
+		static std::vector<RawInput> Search(
+			USHORT vendor_id = 0x0000, USHORT product_id = 0x0000, USAGE usage_page = 0x0000, USAGE usage = 0x0000);
+		static std::vector<RawInput> SearchByID(USHORT vendor_id, USHORT product_id = 0x0000)
+		{
+			return Search(vendor_id, product_id);
+		}
+		static std::vector<RawInput> SearchByUsage(USAGE usage_page, USAGE usage)
+		{
+			return Search(0x0000, 0x0000, usage_page, usage);
+		}
 
-		BOOL Search(RID_DEVICE_INFO_HID const &query);
+		static std::vector<RawInput> SearchByHandle(HANDLE handle);
 
-		RID_DEVICE_INFO_HID const *Search(HANDLE h);
+		BOOL Test(USHORT vendor_id = 0x0000, USHORT product_id = 0x0000, USAGE usage_page = 0x0000, USAGE usage = 0x0000);
+		BOOL const & TestByID(USHORT vendor_id, USHORT product_id = 0x0000)
+		{
+			return Test(vendor_id, product_id);
+		}
+		BOOL const & TestByUsage(USAGE usage_page, USAGE usage)
+		{
+			return Test(0x0000, 0x0000, usage_page, usage);
+		}
 
-		BOOL Register(HWND hWnd, RID_DEVICE_INFO_HID const &query);
+		BOOL Register(HWND hWnd);
 
-		BOOL Unregister(HWND hWnd, RID_DEVICE_INFO_HID const &query);
+		BOOL Unregister(HWND hWnd);
 
-		void UnregisterAll(HWND hWnd);
+		BOOL IsRegistered();
+
+		BOOL IsRegistered(HWND hWnd);
+
+		static void UnregisterAll(HWND hWnd);
+
+		USHORT GetVendorId(void) const;
+
+		USHORT GetProductId(void) const;
+
+		USHORT GetVersionNumber(void) const;
+
+		USAGE GetUsagePage(void) const;
+
+		USAGE GetUsage(void) const;
+
 	};
 }
 

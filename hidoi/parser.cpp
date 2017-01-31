@@ -87,7 +87,7 @@ public:
 
 	static bool handle_hidp_status(NTSTATUS s)
 	{
-#define CASE_HIDP_STATUS(S)	case S: ::OutputDebugString(_T(#S));
+#define CASE_HIDP_STATUS(S)	case S: utils::trace(_T(#S));
 		switch (s)
 		{
 		CASE_HIDP_STATUS(HIDP_STATUS_SUCCESS)

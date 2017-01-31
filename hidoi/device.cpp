@@ -56,55 +56,55 @@ Device::Path::Path(LPCTSTR ctstr): pImpl(new Device::Path::Impl(ctstr))
 
 Device::Path::~Path()  { delete pImpl; }
 
-class Device::Info
-{
-public:
-	BOOL							valid;
-	HANDLE							hDevice;
-	HIDD_ATTRIBUTES					attributes;
-	HIDP_CAPS						capabilities;
-
-	std::vector<BYTE>				inputReportBuffer;
-	std::vector<BYTE>				outputReportBuffer;
-	std::vector<BYTE>				featureReportBuffer;
-
-	Info(HANDLE h, BOOL with_detailed_caps)
-	{
-		valid = FALSE;
-		hDevice = h;
-		if (h != INVALID_HANDLE_VALUE)
-		{	// handle valid
-			if (HidD_GetAttributes(h, &attributes))
-			{	// attributes available
-				PHIDP_PREPARSED_DATA preparsedData;
-				if (HidD_GetPreparsedData(h, &preparsedData))
-				{	// pre-parsed data available
-					if (HIDP_STATUS_SUCCESS == HidP_GetCaps(preparsedData, &capabilities))
-					{	// capabilities available
-						valid = TRUE;
-						if (with_detailed_caps) PrepareReportInfo();
-					}
-					HidD_FreePreparsedData(preparsedData);
-				}
-			}
-		}
-	}
-
-	~Info(void)
-	{
-	}
-
-	void PrepareReportInfo()
-	{
-		inputReportBuffer.resize(capabilities.InputReportByteLength);
-		outputReportBuffer.resize(capabilities.OutputReportByteLength);
-		featureReportBuffer.resize(capabilities.FeatureReportByteLength);
-	}
-};
-
 struct Device::Impl
 {
 public:
+	class Info
+	{
+	public:
+		BOOL							valid;
+		HANDLE							hDevice;
+		HIDD_ATTRIBUTES					attributes;
+		HIDP_CAPS						capabilities;
+
+		std::vector<BYTE>				inputReportBuffer;
+		std::vector<BYTE>				outputReportBuffer;
+		std::vector<BYTE>				featureReportBuffer;
+
+		Info(HANDLE h, BOOL with_detailed_caps)
+		{
+			valid = FALSE;
+			hDevice = h;
+			if (h != INVALID_HANDLE_VALUE)
+			{	// handle valid
+				if (HidD_GetAttributes(h, &attributes))
+				{	// attributes available
+					PHIDP_PREPARSED_DATA preparsedData;
+					if (HidD_GetPreparsedData(h, &preparsedData))
+					{	// pre-parsed data available
+						if (HIDP_STATUS_SUCCESS == HidP_GetCaps(preparsedData, &capabilities))
+						{	// capabilities available
+							valid = TRUE;
+							if (with_detailed_caps) PrepareReportInfo();
+						}
+						HidD_FreePreparsedData(preparsedData);
+					}
+				}
+			}
+		}
+
+		~Info(void)
+		{
+		}
+
+		void PrepareReportInfo()
+		{
+			inputReportBuffer.resize(capabilities.InputReportByteLength);
+			outputReportBuffer.resize(capabilities.OutputReportByteLength);
+			featureReportBuffer.resize(capabilities.FeatureReportByteLength);
+		}
+	};
+
 	static std::vector<Device::Path> enumerate()
 	{
 		std::vector<Device::Path> paths;
@@ -220,8 +220,6 @@ public:
 	Device *self_;
 	BOOL is_requested_stop_reading_;
 	std::thread reader_thread_;
-
-	std::function<void(std::vector<BYTE> const &)> handler_on_input_;
 
 	Impl(Device *pSelf) :self_(pSelf), file_(NULL)
 	{
@@ -345,7 +343,9 @@ public:
 
 	}
 
-	BOOL start_async(void)
+	std::function<InputListener> listener_;
+
+	BOOL start_async(std::function<InputListener> const &listener)
 	{
 		if (!info_) return FALSE;
 
@@ -353,6 +353,7 @@ public:
 
 		::HidD_FlushQueue(info_->hDevice);
 
+		listener_ = listener;
 		is_requested_stop_reading_ = FALSE;
 		std::thread th(std::bind(&Impl::read_async, this));
 
@@ -373,6 +374,7 @@ public:
 				std::lock_guard<std::mutex> lock(mtx_);
 				::HidD_FlushQueue(info_->hDevice);
 			}
+			listener_ = nullptr;
 		}
 	}
 
@@ -425,11 +427,6 @@ public:
 		return bRet;
 	}
 
-	void set_handler_on_input(std::function<void(std::vector<BYTE> const &)> const &func)
-	{
-		handler_on_input_ = func;
-	}
-
 	void read_async(void)
 	{
 		do
@@ -437,7 +434,7 @@ public:
 			std::vector<BYTE> rep;
 			if (read(&rep))
 			{
-				if (handler_on_input_) handler_on_input_(rep);
+				if (listener_) listener_(rep);
 			}
 			std::this_thread::yield();
 		} while (!is_requested_stop_reading_);
@@ -505,24 +502,34 @@ std::vector<BYTE> const * Device::GetFeature(BYTE id)
 	return pImpl->get_feature(id)? &pImpl->info_->featureReportBuffer: NULL;
 }
 
-BOOL Device::Write(std::vector<BYTE> const &src)
+BOOL Device::SetOutput(std::vector<BYTE> const &src)
 {
 	return pImpl->write(src);
 }
 
-BOOL Device::Read(std::vector<BYTE> * dst)
+BOOL Device::GetInput(std::vector<BYTE> * dst)
 {
 	return pImpl->read(dst);
 }
 
-std::vector<BYTE> const * Device::Read(void)
+std::vector<BYTE> const * Device::GetInput(void)
 {
 	return pImpl->read() ? &pImpl->info_->inputReportBuffer : NULL;
 }
 
-BOOL Device::IsAsyncReading(void) const
+BOOL Device::StartListeningInput(std::function<InputListener> const &listener)
+{
+	return pImpl->start_async(listener);
+}
+
+BOOL Device::IsListeningInput(void) const
 {
 	return  pImpl->is_reading_async();
+}
+
+void Device::QuitListeningInput(void)
+{
+	pImpl->stop_async();
 }
 
 USHORT Device::GetVendorId(void) const
@@ -535,12 +542,17 @@ USHORT Device::GetProductId(void) const
 	return pImpl->info_->attributes.ProductID;
 }
 
-USHORT Device::GetUsagePage(void) const
+USHORT Device::GetVersionNumber(void) const
+{
+	return pImpl->info_->attributes.VersionNumber;
+}
+
+USAGE Device::GetUsagePage(void) const
 {
 	return pImpl->info_->capabilities.UsagePage;
 }
 
-USHORT Device::GetUsage(void) const
+USAGE Device::GetUsage(void) const
 {
 	return pImpl->info_->capabilities.Usage;
 }

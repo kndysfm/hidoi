@@ -6,10 +6,26 @@ namespace hidoi
 {
 	namespace utils
 	{
-
-		//static BOOL RegisterNotification(HWND hwnd);
-
-		//static void UnregisterNotification(HWND hwnd);
-
+		void trace(LPCTSTR fmt, ...);
+		void assert(BOOL condition, LPCTSTR message = NULL);
 	};
-} // namespace wahidx
+} // namespace hidoi
+
+#ifndef _STRINGIZE
+#define _STRINGIZEX(x)	#x
+#define _STRINGIZE(x)	_STRINGIZEX(x)
+#endif
+#ifndef HERE
+#define __TCSLINE__		_T(_STRINGIZE(__LINE__))
+#define __TCSFILE__		_T(__FILE__)
+#define HERE			__TCSFILE__ _T("(") __TCSLINE__ _T(")")
+#define HERE_T(x)		HERE _T(x) _T(":\r\n\t")
+#endif
+
+#define HIDOI_UTILS_TRACE_HERE()	hidoi::utils::trace(HERE)
+#define HIDOI_UTILS_TRACE_STR(exp)	hidoi::utils::trace(HERE_T(exp))
+#define HIDOI_UTILS_TRACE_INT(exp)	hidoi::utils::trace(HERE_T(#exp"\t= %d"),		(int)exp)
+#define HIDOI_UTILS_TRACE_HEX(exp)	hidoi::utils::trace(HERE_T(#exp"\t= %08XH"),	(int)exp)
+#define HIDOI_UTILS_TRACE_BOOL(exp)	hidoi::utils::trace(HERE_T(#exp"\t= %s"),		((BOOL)exp)?_T("TRUE"):_T("FALSE"))
+#define HIDOI_UTILS_ASSERT(cond)	hidoi::utils::assert(cond, HERE_T(#cond) _T(" must be TRUE"))
+

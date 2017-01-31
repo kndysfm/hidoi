@@ -25,12 +25,18 @@ namespace hidoi
 	public: // methods
 		static Watcher &GetInstance(void); // singleton pattern
 
-		BOOL Start();
-
-		void Stop();
-
 		typedef void (DeviceChangeEventListener)(DWORD_PTR dwData);
 		BOOL RegisterDeviceChangeEventListener(UINT uEventType, std::function<DeviceChangeEventListener>  const &listener);
+		BOOL UnregisterDeviceChangeEventListener(UINT uEventType);
+
+		typedef void (RawInputEventListener)(std::vector<BYTE> const &);
+		struct Target
+		{
+			USHORT VendorId, ProductId;
+			USAGE UsagePage, Usage;
+		};
+		BOOL RegisterRawInputEventListener(Target const &target, std::function<RawInputEventListener>  const &listener);
+		BOOL UnregisterRawInputEventListener(Target const &target);
 
 	};
 
