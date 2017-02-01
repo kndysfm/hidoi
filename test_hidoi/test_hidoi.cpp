@@ -39,6 +39,16 @@ static void ParsingPenEventListener(std::vector<BYTE> const& dat, hidoi::Parser 
 		Tcout << _T("x = ") << x_phys << _T("(") << x_logi << _T(")\r\n");
 		Tcout << _T("y = ") << y_phys << _T("(") << y_logi << _T(")\r\n");
 		Tcout << _T("p = ") << p_logi << _T("\r\n");
+
+		std::vector<BYTE> deparsed = p->DeparseInput(dat[0], *r);
+		if (deparsed[1] == dat[1] && deparsed[2] == dat[2])
+		{
+			Tcout << _T("Good deparsing !\r\n");
+		}
+		else
+		{
+			Tcout << _T("Bad deparsing !\r\n");
+		}
 	}
 
 }

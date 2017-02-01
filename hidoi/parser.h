@@ -57,6 +57,8 @@ namespace hidoi
 
 		Report const * ParseInput(std::vector<BYTE> const &report);
 
+		std::vector<BYTE> DeparseInput(BYTE report_id, Report const &report);
+
 		Report const * ParseFeature(std::vector<BYTE> const &report);
 
 	};

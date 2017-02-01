@@ -14,6 +14,7 @@ private:
 	LPCTSTR path_;
 	HANDLE handle_;
 	PHIDP_PREPARSED_DATA			pp_;
+	HIDP_CAPS caps_hid_;
 
 	struct ReportCaps
 	{
@@ -79,6 +80,7 @@ public:
 	{
 		// get the report descriptor info
 		::HidD_GetPreparsedData(h, &pp_);
+		::HidP_GetCaps(pp_, &caps_hid_);
 		// make capabilities objects for each report type
 		init_caps(HidP_Input, &caps_input_);
 		init_caps(HidP_Output, &caps_output_);
@@ -185,10 +187,6 @@ public:
 			btns_pressed.resize(len);
 			::HidP_GetUsagesEx(rep_type, 0, btns_pressed.data(), &len, pp_, (PCHAR)report.data(), report.size());
 		}
-		if (len > 1)
-		{
-			;
-		}
 
 		for (auto const &bc: caps->ButtonCaps)
 		{
@@ -204,6 +202,62 @@ public:
 		}
 
 		return r;
+	}
+
+	std::vector<BYTE> deparse(HIDP_REPORT_TYPE rep_type, UCHAR report_id, Report const &report)
+	{
+		std::vector<BYTE> rep_raw;
+		ReportCaps *caps;
+		ULONG len = 0;
+		switch (rep_type)
+		{
+		case HidP_Input: caps = &caps_input_; len = caps_hid_.InputReportByteLength;
+			break;
+		case HidP_Output: caps = &caps_output_;  len = caps_hid_.OutputReportByteLength;
+			break;
+		case HidP_Feature: caps = &caps_feature_; len = caps_hid_.FeatureReportByteLength;
+			break;
+		default: return rep_raw;
+		}
+
+		rep_raw.resize(len, 0x00);
+
+		ULONG length = caps->ValueCaps.size();
+		for (auto const &vc : caps->ValueCaps)
+		{
+			if (vc.ReportID != report_id) continue; ///BUGBUG not considering report without ID
+
+			USHORT page = vc.UsagePage;
+			USHORT usage = vc.NotRange.Usage; ///BUGBUG not considering a field with range
+			NTSTATUS status = HIDP_STATUS_SUCCESS;
+			if (vc.ReportCount == 1)
+			{
+				status = HidP_SetUsageValue(rep_type, page, 0, usage, report.GetValue(page, usage), pp_, (PCHAR)rep_raw.data(), len);
+				if (status != HIDP_STATUS_SUCCESS) handle_hidp_status(status);
+			}
+			else if (vc.ReportCount > 1)
+			{
+				std::vector<CHAR> buf = report.GetValueArray(page, usage);
+				status = HidP_SetUsageValueArray(rep_type, page, 0, usage, buf.data(), buf.size(), pp_, (PCHAR)rep_raw.data(), len);
+				if (status != HIDP_STATUS_SUCCESS) handle_hidp_status(status);
+			}
+		}
+
+		for (auto const &bc : caps->ButtonCaps)
+		{
+			if (bc.ReportID != report_id) continue; ///BUGBUG not considering report without ID
+
+			USHORT page = bc.UsagePage;
+			USHORT usage = bc.NotRange.Usage; ///BUGBUG not considering buttons as range of usage
+
+			if (report.GetButton(page, usage))
+			{
+				ULONG len_btn = 1;
+				::HidP_SetUsages(rep_type, page, 0, &usage, &len_btn, pp_, (PCHAR)rep_raw.data(), len);
+			}
+		}
+
+		return rep_raw;
 	}
 
 };
@@ -235,6 +289,11 @@ Parser::Report const * Parser::ParseInput(std::vector<BYTE> const &report)
 {
 	std::vector<BYTE> buf = report;
 	return pImpl? pImpl->parse(HidP_Input, buf): nullptr;
+}
+
+std::vector<BYTE> Parser::DeparseInput(BYTE report_id, Report const &report)
+{
+	return pImpl? pImpl->deparse(HidP_Input, report_id, report): std::vector<BYTE>();
 }
 
 Parser::Report const * Parser::ParseFeature(std::vector<BYTE> const &report)
