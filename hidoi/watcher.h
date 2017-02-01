@@ -28,6 +28,11 @@ namespace hidoi
 		typedef void (DeviceChangeEventListener)(DWORD_PTR dwData);
 		BOOL RegisterDeviceChangeEventListener(UINT uEventType, std::function<DeviceChangeEventListener>  const &listener);
 		BOOL UnregisterDeviceChangeEventListener(UINT uEventType);
+		BOOL RegisterDeviceArrivalEventListener(std::function<DeviceChangeEventListener>  const &listener);
+		BOOL UnregisterDeviceArrivalEventListener();
+		BOOL RegisterDeviceRemoveEventListener(std::function<DeviceChangeEventListener>  const &listener);
+		BOOL UnregisterDeviceRemoveEventListener();
+
 
 		typedef void (RawInputEventListener)(std::vector<BYTE> const &);
 		struct Target

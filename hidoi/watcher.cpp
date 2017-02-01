@@ -1,6 +1,4 @@
 #include "watcher.h"
-#include "tstring.h"
-#include "ri.h"
 
 #include <thread>
 #include <mutex>
@@ -237,15 +235,15 @@ struct Watcher::Impl
 		switch (msg)
 		{
 		case WM_INPUT:
-			utils::trace(_T("WM_INPUT"));
+			HIDOI_UTILS_TRACE_STR("WM_INPUT");
 			Watcher::GetInstance().pImpl->proc_wm_input(GET_RAWINPUT_CODE_WPARAM(wp), (HRAWINPUT)lp);
 			break;
 		case WM_DEVICECHANGE:
-			utils::trace(_T("WM_DEVICECHANGE"));
+			HIDOI_UTILS_TRACE_STR("WM_DEVICECHANGE");
 			Watcher::GetInstance().pImpl->proc_wm_devicechange((UINT)wp, (DWORD_PTR)lp);
 			break;
 		case WM_DESTROY:
-			utils::trace(_T("Destroying watcher window"));
+			HIDOI_UTILS_TRACE_STR("WM_DESTROY - Destroying watcher window");
 			PostQuitMessage(0);
 			return 0L;
 		default:
@@ -422,6 +420,27 @@ BOOL Watcher::UnregisterDeviceChangeEventListener(UINT uEventType)
 {
 	return (BOOL) pImpl->remove_wm_devicechange_func(uEventType);
 }
+
+BOOL Watcher::RegisterDeviceArrivalEventListener(std::function<DeviceChangeEventListener>  const &listener)
+{
+	return (BOOL)pImpl->add_wm_devicechange_func(DBT_DEVICEARRIVAL, listener);
+}
+
+BOOL Watcher::UnregisterDeviceArrivalEventListener()
+{
+	return (BOOL)pImpl->remove_wm_devicechange_func(DBT_DEVICEARRIVAL);
+}
+
+BOOL Watcher::RegisterDeviceRemoveEventListener(std::function<DeviceChangeEventListener>  const &listener)
+{
+	return (BOOL)pImpl->add_wm_devicechange_func(DBT_DEVICEREMOVECOMPLETE, listener);
+}
+
+BOOL Watcher::UnregisterDeviceRemoveEventListener()
+{
+	return (BOOL)pImpl->remove_wm_devicechange_func(DBT_DEVICEREMOVECOMPLETE);
+}
+
 
 BOOL Watcher::RegisterRawInputEventListener(Watcher::Target const &target, std::function<RawInputEventListener>  const &listener)
 {

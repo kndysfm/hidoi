@@ -4,7 +4,7 @@
 #include "stdafx.h"
 
 #include <hidoi/hidoi.h>
-#include <hidoi/tstring.h>
+USING_TCHAR_CONSOLE
 
 #include <thread>
 
@@ -16,7 +16,7 @@
 //}
 
 #include <iomanip>
-static void RawInputEventListener(std::vector<BYTE> const& dat)
+static void RawInputPenEventListener(std::vector<BYTE> const& dat)
 {
 	Tcout << std::hex << std::setfill(_T('0'));
 	for (BYTE b : dat) Tcout << std::setw(2) << b << _T(" ");
@@ -28,49 +28,66 @@ int main()
 	auto &watcher = hidoi::Watcher::GetInstance();
 	//watcher.RegisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED, OnDeviceNodesChange);
 	watcher.RegisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED, [](DWORD_PTR) {Tcout << _T("\t DBT_DEVNODES_CHANGED received !! \r\n"); });
-	watcher.RegisterDeviceChangeEventListener(DBT_DEVICEARRIVAL, [](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEARRIVAL received !! \r\n"); });
-	watcher.RegisterDeviceChangeEventListener(DBT_DEVICEREMOVECOMPLETE, [](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEREMOVECOMPLETE received !! \r\n"); });
+	watcher.RegisterDeviceArrivalEventListener([](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEARRIVAL received !! \r\n"); });
+	watcher.RegisterDeviceRemoveEventListener([](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEREMOVECOMPLETE received !! \r\n"); });
 	hidoi::Watcher::Target tgt;
 	tgt.VendorId = 0; tgt.ProductId = 0; tgt.UsagePage = HID_USAGE_PAGE_DIGITIZER; tgt.Usage = HID_USAGE_DIGITIZER_PEN;
-	watcher.RegisterRawInputEventListener(tgt, RawInputEventListener);
-
-	auto paths = hidoi::Device::SearchByID(0x056A, 0x0000);
-	for (auto &p : paths)
-	{
-		hidoi::Device dev;
-		if (dev.Open(p))
-		{
-			_tprintf(_T("Wacom HID is found:\r\n"));
-			_tprintf(_T("\t Vendor ID: %04xH\r\n"), dev.GetVendorId());
-			_tprintf(_T("\t Product ID: %04xH\r\n"), dev.GetProductId());
-			_tprintf(_T("\t Usage Page - Usage: %04xH - %04xH\r\n"), dev.GetUsagePage(), dev.GetUsage());
-			dev.Close();
-		}
-		else
-		{
-			_tprintf(_T("Failed to open a device\r\n"));
-		}
-	}
+	Tcout << _T("Start watching Raw Input of HID and connection of device(s)\r\n");
+	watcher.RegisterRawInputEventListener(tgt, RawInputPenEventListener);
 
 	auto ris = hidoi::RawInput::SearchByUsage(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_PEN);
 	for (auto &dev : ris)
 	{
-		_tprintf(_T("Raw input device is found:\r\n"));
-		_tprintf(_T("\t Vendor ID: %04xH\r\n"), dev.GetVendorId());
-		_tprintf(_T("\t Product ID: %04xH\r\n"), dev.GetProductId());
-		_tprintf(_T("\t Usage Page - Usage: %04xH - %04xH\r\n"), dev.GetUsagePage(), dev.GetUsage());
+		Tcout << _T("Raw input device is found:\r\n");
+		Tcout << std::hex << std::setfill(_T('0'));
+		Tcout << _T("\t Vendor ID: ") <<  std::setw(4) << dev.GetVendorId() << _T("H\r\n");
+		Tcout << _T("\t Product ID: ") << std::setw(4) << dev.GetProductId() << _T("H\r\n");
+		Tcout << _T("\t Usage Page - Usage: ") <<
+			std::setw(4) << dev.GetUsagePage() << _T("H - ") << std::setw(4) << dev.GetUsage() << _T("H\r\n");
 	}
 
-	_tprintf(_T("Press enter key\r\n"));
-	std::vector<_TCHAR> buf; buf.resize(16);
-	_getts_s(buf.data(), buf.size());
+	Tcout << _T("Press enter an any charactor\r\n");
+	TCHAR c_dmy;
+	Tcin >> c_dmy;
 
 	watcher.UnregisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED);
-	watcher.UnregisterDeviceChangeEventListener(DBT_DEVICEARRIVAL);
-	watcher.UnregisterDeviceChangeEventListener(DBT_DEVICEREMOVECOMPLETE);
+	watcher.UnregisterDeviceArrivalEventListener();
+	watcher.UnregisterDeviceRemoveEventListener();
 	watcher.UnregisterRawInputEventListener(tgt);
+	Tcout << _T("Listeners are removed from the Watcher !!\r\n");
 
-	_getts_s(buf.data(), buf.size());
+	auto paths = hidoi::Device::Search(0x056A, 0x0000, 0x0000, HID_USAGE_DIGITIZER_PEN);
+	if (paths.size() == 0) Tcout << _T("No Wacom Pen device was found !!\r\n");
+	hidoi::Device dev;
+	for (auto &p : paths)
+	{
+		if (dev.Open(p))
+		{
+			Tcout << _T("A Wacom device is found:\r\n");
+			Tcout << std::hex << std::setfill(_T('0'));
+			Tcout << _T("\t Vendor ID: ") << std::setw(4) << dev.GetVendorId() << _T("H\r\n");
+			Tcout << _T("\t Product ID: ") << std::setw(4) << dev.GetProductId() << _T("H\r\n");
+			Tcout << _T("\t Usage Page - Usage: ") <<
+				std::setw(4) << dev.GetUsagePage() << _T("H - ") << std::setw(4) << dev.GetUsage() << _T("H\r\n");
+			break;
+		}
+		else
+		{
+			Tcout << _T("Failed to open a device\r\n");
+		}
+	}
+	if (dev.IsOpened())
+	{
+		Tcout << _T("Start asynchronous reading HID input reports..\r\n");
+		dev.StartListeningInput(RawInputPenEventListener);
+		dev.SetFeature({ 0x0b, 0x01 }); // switch I/F for interrupt report
+	}
+
+	Tcout << _T("Press enter an any charactor\r\n");
+	Tcin >> c_dmy;
+
+	dev.QuitListeningInput();
+	dev.Close();
 
     return 0;
 }

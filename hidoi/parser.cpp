@@ -6,8 +6,6 @@ EXTERN_C
 }
 #include <map>
 
-#include "tstring.h"
-
 using namespace hidoi;
 
 typedef DWORD USAGEPAGE_USAGE;

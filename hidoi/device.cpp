@@ -87,9 +87,12 @@ public:
 							valid = TRUE;
 							if (with_detailed_caps) PrepareReportInfo();
 						}
+						else utils::trace(_T("Failed to get HID capabilities"));
 						HidD_FreePreparsedData(preparsedData);
 					}
+					else utils::trace(_T("Failed to get HID preparsed data"));
 				}
+				else utils::trace(_T("Failed to get HID attributes"));
 			}
 		}
 
@@ -202,10 +205,6 @@ public:
 		return FALSE;
 	}
 
-	//!TEST
-	std::FILE *file_;
-	//!TEST
-
 	Tstring device_path_;
 	std::unique_ptr<Info> info_;
 	std::mutex mtx_;
@@ -220,17 +219,23 @@ public:
 	Device *self_;
 	BOOL is_requested_stop_reading_;
 	std::thread reader_thread_;
+	OVERLAPPED ol_write_, ol_read_;
+	bool is_read_pending_;
+	DWORD milsec_timeout_;
 
-	Impl(Device *pSelf) :self_(pSelf), file_(NULL)
+	static const DWORD DEFAULT_MILSEC_TIMEOUT = 1000;
+
+	Impl(Device *pSelf) :self_(pSelf), milsec_timeout_(DEFAULT_MILSEC_TIMEOUT)
 	{
+		memset(&ol_write_, 0, sizeof(OVERLAPPED));
+		memset(&ol_read_, 0, sizeof(OVERLAPPED));
+		is_read_pending_ = false;
 	}
 
 	virtual ~Impl(void)
 	{
 		close();
 	}
-
-	static const DWORD TIMEOUT_DEFAULT = 1000; // 1sec
 
 	BOOL open(Path const &devicePath, BOOL with_detailed_caps = TRUE)
 	{
@@ -240,7 +245,7 @@ public:
 								(GENERIC_READ|GENERIC_WRITE), (FILE_SHARE_READ | FILE_SHARE_WRITE), 
 								NULL,        // no SECURITY_ATTRIBUTES structure
 								OPEN_EXISTING, // No special create flags
-								0,   // Open device as non-overlapped so we can get data
+								FILE_FLAG_OVERLAPPED,   // Open device as overlapped
 								NULL);       // No template file
 		//file_ = std::fopen(devicePath.pImpl->str.c_str(), "rb+");
 		if (h != INVALID_HANDLE_VALUE)
@@ -248,7 +253,9 @@ public:
 			info_.reset(new Info(h, with_detailed_caps));
 			if (info_->valid)
 			{
-				set_timeout(TIMEOUT_DEFAULT, TIMEOUT_DEFAULT);
+				ol_read_.hEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+				ol_write_.hEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+
 				return TRUE;
 			}
 		}
@@ -276,12 +283,8 @@ public:
 			std::lock_guard<std::mutex> lock(mtx_);
 			stop_async();
 
-			if (file_)
-			{
-				std::fclose(file_);
-				file_ = NULL;
-			}
-
+			::CloseHandle(ol_write_.hEvent);
+			::CloseHandle(ol_read_.hEvent);
 			HANDLE h = info_->hDevice;
 			info_.reset();
 			::CloseHandle(h);
@@ -291,55 +294,68 @@ public:
 
 	BOOL set_feature(std::vector<BYTE> const &src)
 	{
+		if (!info_) return FALSE;
 
-		BOOL bRet = (bool)info_;
-		if (bRet)
+		std::lock_guard<std::mutex> lock(mtx_);
+		copyBuffer(&info_->featureReportBuffer, &src);
+		if (::HidD_SetFeature(
+			info_->hDevice,
+			info_->featureReportBuffer.data(), info_->capabilities.FeatureReportByteLength))
 		{
-			std::lock_guard<std::mutex> lock(mtx_);
-			copyBuffer(&info_->featureReportBuffer, &src);
-			bRet = (BOOL)::HidD_SetFeature(
-				info_->hDevice, 
-				info_->featureReportBuffer.data(), info_->capabilities.FeatureReportByteLength);
+			return TRUE;
 		}
-
-		return bRet;
+		
+		utils::trace(_T("Failed to set feature"));
+		return FALSE;
 	}
 
 	BOOL get_feature(BYTE report_id, std::vector<BYTE> *dst = NULL)
 	{
+		if (!info_) return FALSE;
 
-		BOOL bRet = (bool)info_;
-		if (bRet)
+		std::lock_guard<std::mutex> lock(mtx_);
+		info_->featureReportBuffer[0] = report_id;
+		if (::HidD_GetFeature(info_->hDevice,
+			info_->featureReportBuffer.data(), info_->capabilities.FeatureReportByteLength))
 		{
-			std::lock_guard<std::mutex> lock(mtx_);
-			info_->featureReportBuffer[0] = report_id;
-			bRet = ::HidD_GetFeature(info_->hDevice,
-				info_->featureReportBuffer.data(), info_->capabilities.FeatureReportByteLength);
 			if (dst != NULL)
 			{
 				dst->assign(info_->featureReportBuffer.begin(), info_->featureReportBuffer.end());
 			}
+			return TRUE;
 		}
 
-		return bRet;
+		utils::trace(_T("Failed to get feature"));
+		return FALSE;
 	}
 
 	BOOL write(std::vector<BYTE> const &src)
 	{
+		if (!info_) return FALSE;
 
-		BOOL bRet = (bool)info_;
-		if (bRet)
+		std::lock_guard<std::mutex> lock(mtx_);
+		DWORD bytes_written;
+		copyBuffer(&info_->outputReportBuffer, &src);
+		::ResetEvent(ol_write_.hEvent);
+		if (::WriteFile(
+			info_->hDevice,
+			info_->outputReportBuffer.data(), info_->capabilities.OutputReportByteLength,
+			&bytes_written, &ol_write_))
 		{
-			std::lock_guard<std::mutex> lock(mtx_);
-			copyBuffer(&info_->outputReportBuffer, &src);
-			DWORD bytesWritten = 0;
-			bRet = ::WriteFile(
-				info_->hDevice,
-				info_->outputReportBuffer.data(), info_->capabilities.OutputReportByteLength,
-				&bytesWritten, NULL) && bytesWritten == info_->capabilities.OutputReportByteLength;
+			if (::WaitForSingleObject(ol_write_.hEvent, milsec_timeout_) != WAIT_OBJECT_0)
+			{
+				::CancelIo(info_->hDevice);
+				utils::trace(_T("Timeout in writing Output report"));
+				return FALSE;
+			}
+			if (::GetOverlappedResult(info_->hDevice, &ol_write_, &bytes_written, TRUE))
+			{
+				return TRUE;
+			}
 		}
-
-		return bRet;
+			
+		utils::trace(_T("Failed to set Output report"));
+		return FALSE;
 
 	}
 
@@ -383,48 +399,61 @@ public:
 		return reader_thread_.joinable();
 	}
 
-	BOOL set_timeout(DWORD ms_timeout_read, DWORD ms_timeout_write)
+	BOOL read(std::vector<BYTE> *dst = nullptr, bool async = false)
 	{
 		if (!info_) return FALSE;
-		std::lock_guard<std::mutex> lock(mtx_);
 
-		COMMTIMEOUTS to = { 0 };
-		to.ReadTotalTimeoutConstant = ms_timeout_read;
-		to.WriteTotalTimeoutConstant = ms_timeout_write;
-		
-		return SetCommTimeouts(info_->hDevice, &to);
-	}
-
-	BOOL get_timeout(DWORD *ms_timeout_read, DWORD *ms_timeout_write)
-	{
-		if (!info_) return FALSE;
-		std::lock_guard<std::mutex> lock(mtx_);
-
-		COMMTIMEOUTS to;
-		BOOL ret = GetCommTimeouts(info_->hDevice, &to);
-		*ms_timeout_read  = to.ReadTotalTimeoutConstant;
-		*ms_timeout_write = to.WriteTotalTimeoutConstant;
-
-		return ret;
-	}
-
-	BOOL read(std::vector<BYTE> *dst = NULL)
-	{
-		BOOL bRet = (bool)info_;
-		if (bRet)
+		DWORD bytes_read = 0;
+		if (!is_read_pending_)
 		{
 			std::lock_guard<std::mutex> lock(mtx_);
-			DWORD bytesRead = 0;
-			bRet = ::ReadFile(info_->hDevice,
+			::ResetEvent(ol_read_.hEvent);
+			if (::ReadFile(info_->hDevice,
 				info_->inputReportBuffer.data(), info_->capabilities.InputReportByteLength,
-				&bytesRead, NULL);
-			if (dst != NULL)
+				&bytes_read, &ol_read_))
 			{
-				dst->assign(info_->inputReportBuffer.begin(), info_->inputReportBuffer.end());
 			}
+			else
+			{
+				if (::GetLastError() == ERROR_IO_PENDING)
+				{
+					utils::trace(_T("HID IO is pending"));
+				}
+				else
+				{
+					utils::trace(_T("Failed to get Input report"));
+					return FALSE;
+				}
+			}
+			is_read_pending_ = true;
 		}
 
-		return bRet;
+		if (!async && ::WaitForSingleObject(ol_write_.hEvent, milsec_timeout_) != WAIT_OBJECT_0)
+		{	// when synchronous reading, it will be timeout
+			std::lock_guard<std::mutex> lock(mtx_);
+			::CancelIo(info_->hDevice);
+			is_read_pending_ = false;
+			utils::trace(_T("Timeout in reading Input report"));
+			return FALSE;
+		}
+
+		if (is_read_pending_)
+		{
+			std::lock_guard<std::mutex> lock(mtx_);
+			if (::GetOverlappedResult(info_->hDevice, &ol_read_, &bytes_read, async ? FALSE/*no wait*/ : TRUE/*wait*/))
+			{
+				is_read_pending_ = false;
+				if (bytes_read > 0)
+				{
+					if (dst)
+					{
+						dst->assign(info_->inputReportBuffer.begin(), info_->inputReportBuffer.end());
+					}
+					return TRUE;
+				}
+			}
+		}
+		return FALSE;
 	}
 
 	void read_async(void)
@@ -432,7 +461,7 @@ public:
 		do
 		{
 			std::vector<BYTE> rep;
-			if (read(&rep))
+			if (read(&rep, true))
 			{
 				if (listener_) listener_(rep);
 			}

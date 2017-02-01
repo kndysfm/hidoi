@@ -12,3 +12,4 @@
 #include "parser.h"
 #include "ri.h"
 #include "watcher.h"
+#include "tstring.h"

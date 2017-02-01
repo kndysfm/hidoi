@@ -9,7 +9,7 @@
 #include <iostream>
 
 //! Declarations to use TCHAR typed string class in an implementation file
-//! Do NOT include this file in HEADER file
+//! Do NOT declare any USING_TCHAR_* macros in below
 
 #define USING_TCHAR_STRING \
 namespace { \
@@ -45,10 +45,16 @@ namespace { \
 	typedef std::vector<std::basic_string<_TCHAR>> TstringVector; \
 }
 
-namespace {
 #ifdef _UNICODE
-	auto & const Tcout = std::wcout;
-#else
-	auto & const Tcout = std::cout;
+	#define USING_TCHAR_CONSOLE \
+	namespace { \
+		auto & const Tcout = std::wcout; \
+		auto & const Tcin = std::wcin; \
+	}
+#else 
+	#define USING_TCHAR_CONSOLE \
+	namespace { \
+		auto & const Tcout = std::cout; \
+		auto & const Tcin = std::cin; \
+	}
 #endif
-}
