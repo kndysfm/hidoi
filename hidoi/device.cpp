@@ -600,3 +600,8 @@ USHORT Device::GetOutputReportLength(void) const
 {
 	return pImpl->info_->capabilities.OutputReportByteLength;
 }
+
+Parser Device::GetParser(void) const
+{
+	return Parser(pImpl->device_path_.c_str());
+}

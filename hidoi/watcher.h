@@ -1,12 +1,10 @@
 #pragma once
 
-
 #include "hidoi.h"
-
-#include <functional>
 
 namespace hidoi
 {
+	class RawInput;
 
 	class Watcher
 	{
@@ -28,6 +26,8 @@ namespace hidoi
 		typedef void (DeviceChangeEventListener)(DWORD_PTR dwData);
 		BOOL RegisterDeviceChangeEventListener(UINT uEventType, std::function<DeviceChangeEventListener>  const &listener);
 		BOOL UnregisterDeviceChangeEventListener(UINT uEventType);
+		BOOL UnregisterDeviceChangeEventListener();
+
 		BOOL RegisterDeviceArrivalEventListener(std::function<DeviceChangeEventListener>  const &listener);
 		BOOL UnregisterDeviceArrivalEventListener();
 		BOOL RegisterDeviceRemoveEventListener(std::function<DeviceChangeEventListener>  const &listener);
@@ -42,6 +42,11 @@ namespace hidoi
 		};
 		BOOL RegisterRawInputEventListener(Target const &target, std::function<RawInputEventListener>  const &listener);
 		BOOL UnregisterRawInputEventListener(Target const &target);
+
+		BOOL RegisterRawInputEventListener(RawInput const &ri, std::function<RawInputEventListener>  const &listener);
+		BOOL UnregisterRawInputEventListener(RawInput const &ri);
+
+		BOOL UnregisterRawInputEventListener();
 
 	};
 

@@ -61,6 +61,8 @@ namespace hidoi
 
 		USAGE GetUsage(void) const;
 
+		Parser GetParser(void) const;
+
 	};
 }
 

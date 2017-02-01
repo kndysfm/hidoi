@@ -16,12 +16,30 @@ USING_TCHAR_CONSOLE
 //}
 
 #include <iomanip>
-static void RawInputPenEventListener(std::vector<BYTE> const& dat)
+static void PenInputEventListener(std::vector<BYTE> const& dat)
 {
 	Tcout << std::hex << std::setfill(_T('0'));
 	for (BYTE b : dat) Tcout << std::setw(2) << b << _T(" ");
 	Tcout << _T("\r\n");
 }
+
+hidoi::Parser p(_T(""));
+static void ParsingPenEventListener(std::vector<BYTE> const& dat/*, hidoi::Parser p*/)
+{
+	auto const &r = p.ParseInput(dat);
+
+	auto x_logi = r.GetValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X);
+	auto x_phys = r.GetScaledValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X);
+	auto y_logi = r.GetValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y);
+	auto y_phys = r.GetScaledValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y);
+	auto p_logi = r.GetValue(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_TIP_PRESSURE);
+
+	Tcout << std::dec;
+	Tcout << _T("x = ") << x_phys << _T("(") << x_logi << _T(")\r\n");
+	Tcout << _T("y = ") << y_phys << _T("(") << y_logi << _T(")\r\n");
+	Tcout << _T("p = ") << p_logi << _T("\r\n");
+}
+
 
 int main()
 {
@@ -33,7 +51,7 @@ int main()
 	hidoi::Watcher::Target tgt;
 	tgt.VendorId = 0; tgt.ProductId = 0; tgt.UsagePage = HID_USAGE_PAGE_DIGITIZER; tgt.Usage = HID_USAGE_DIGITIZER_PEN;
 	Tcout << _T("Start watching Raw Input of HID and connection of device(s)\r\n");
-	watcher.RegisterRawInputEventListener(tgt, RawInputPenEventListener);
+	watcher.RegisterRawInputEventListener(tgt, PenInputEventListener);
 
 	auto ris = hidoi::RawInput::SearchByUsage(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_PEN);
 	for (auto &ri : ris)
@@ -44,6 +62,8 @@ int main()
 		Tcout << _T("\t Product ID: ") << std::setw(4) << ri.GetProductId() << _T("H\r\n");
 		Tcout << _T("\t Usage Page - Usage: ") <<
 			std::setw(4) << ri.GetUsagePage() << _T("H - ") << std::setw(4) << ri.GetUsage() << _T("H\r\n");
+		p = ri.GetParser();
+		watcher.RegisterRawInputEventListener(ri, ParsingPenEventListener);
 	}
 
 	Tcout << _T("Press enter an any charactor\r\n");
@@ -53,7 +73,9 @@ int main()
 	watcher.UnregisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED);
 	watcher.UnregisterDeviceArrivalEventListener();
 	watcher.UnregisterDeviceRemoveEventListener();
+	watcher.UnregisterDeviceChangeEventListener(); // all
 	watcher.UnregisterRawInputEventListener(tgt);
+	watcher.UnregisterRawInputEventListener(); // all
 	Tcout << _T("Listeners are removed from the Watcher !!\r\n");
 
 	auto paths = hidoi::Device::Search(0x056A, 0x0000, 0x0000, HID_USAGE_DIGITIZER_PEN);
@@ -79,7 +101,7 @@ int main()
 	if (dev.IsOpened())
 	{
 		Tcout << _T("Start asynchronous reading HID input reports..\r\n");
-		dev.StartListeningInput(RawInputPenEventListener);
+		dev.StartListeningInput(PenInputEventListener);
 		dev.SetFeature({ 0x0b, 0x01 }); // switch I/F for interrupt report
 	}
 

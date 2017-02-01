@@ -4,6 +4,8 @@
 
 namespace hidoi
 {
+	class RawInput;
+	class Parser;
 
 	class Device
 	{
@@ -106,6 +108,7 @@ namespace hidoi
 
 		USHORT GetOutputReportLength(void) const;
 
+		Parser GetParser(void) const;
 	};
 
 }; // namespace wahidx

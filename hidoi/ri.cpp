@@ -298,3 +298,7 @@ USAGE RawInput::GetUsage(void) const
 	return (USAGE)pImpl->info_.info.hid.usUsage;
 }
 
+Parser RawInput::GetParser(void) const
+{
+	return Parser(pImpl->info_.name.c_str());
+}

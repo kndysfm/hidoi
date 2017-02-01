@@ -13,6 +13,8 @@ EXTERN_C
 
 using namespace hidoi;
 
+#define DBT_ANY	(0xFFFF)
+
 struct Watcher::Impl
 {
 	std::mutex mtx_listeners_, mtx_th_watch_;
@@ -25,18 +27,22 @@ struct Watcher::Impl
 	typedef std::pair<Watcher::Target, std::function<Watcher::RawInputEventListener>> wm_input_listner_t;
 	std::vector<wm_input_listner_t> listeners_;
 
-	
-	wm_input_listner_t * get_wm_input_listner(RawInput &ri)
+
+	std::vector<wm_input_listner_t> get_wm_input_listners(std::vector<RawInput> &ris)
 	{
-		for (auto &l : listeners_)
+		std::vector<wm_input_listner_t> ls;
+		for (auto & ri : ris)
 		{
-			if (ri.Test(l.first.VendorId, l.first.ProductId, l.first.UsagePage, l.first.Usage))
+			for (auto &l : listeners_)
 			{
-				return &l;
+				if (ri.Test(l.first.VendorId, l.first.ProductId, l.first.UsagePage, l.first.Usage))
+				{
+					ls.push_back(l);
+				}
 			}
 		}
 
-		return nullptr;
+		return ls;
 	}
 
 	void register_wm_input_targets(DWORD_PTR)
@@ -89,23 +95,19 @@ struct Watcher::Impl
 			std::vector<BYTE> rep_in;
 			rep_in.resize(size);
 			auto ris = RawInput::SearchByHandle(pRawInput->header.hDevice);
-			for (auto &ri : ris)
-			{
-				std::lock_guard<std::mutex> lock(mtx_listeners_);
-				wm_input_listner_t *lsnr = get_wm_input_listner(ri);
-				if (lsnr)
+			auto ls = get_wm_input_listners(ris);
+			if (ls.size() > 0)
+			{	// listeners are registered
+				for (DWORD idx = 0; idx < cnt; idx++)
 				{
-					for (DWORD idx = 0; idx < cnt; idx++)
+					BYTE const *src = raw;
+					for (DWORD i = 0; i < size; i++, src++)
 					{
-						BYTE const *src = raw;
-						for (DWORD i = 0; i < size; i++, src++)
-						{
-							rep_in[i] = *src;
-						}
-						// pass dat vector to registerd functional object
-						lsnr->second(rep_in);
-						raw += size;
+						rep_in[i] = *src;
 					}
+					// pass dat vector to registerd functional object
+					for (auto &l : ls) l.second(rep_in);
+					raw += size;
 				}
 			}
 		}
@@ -145,6 +147,17 @@ struct Watcher::Impl
 		return false;
 	}
 
+	bool remove_wm_input_func() // remove all
+	{
+		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
+
+		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		listeners_.clear();
+		register_wm_input_targets(0);
+
+		return true;
+	}
+
 	typedef std::function<Watcher::DeviceChangeEventListener> wm_devicechange_func;
 
 	std::map<UINT, std::pair<wm_devicechange_func, std::thread>> map_wm_devicechange_listeners_;
@@ -171,6 +184,17 @@ struct Watcher::Impl
 		return true;
 	}
 
+	bool remove_wm_devicechange_func() // remove all but for DBT_ANY(default) handler
+	{
+		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
+
+		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		map_wm_devicechange_listeners_.clear();
+		map_wm_devicechange_listeners_[DBT_ANY].first = std::bind(&Watcher::Impl::register_wm_input_targets, this, std::placeholders::_1);
+
+		return true;
+	}
+
 	void proc_wm_devicechange_async(UINT nEventType, DWORD_PTR dwData)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -178,8 +202,6 @@ struct Watcher::Impl
 		map_wm_devicechange_listeners_[nEventType].first(dwData);
 		map_wm_devicechange_listeners_[nEventType].second.detach();
 	}
-
-#define DBT_ANY	(0xFFFF)
 
 	void proc_wm_devicechange_start_thread(UINT nEventType, DWORD_PTR dwData)
 	{
@@ -419,6 +441,11 @@ BOOL Watcher::UnregisterDeviceChangeEventListener(UINT uEventType)
 	return (BOOL) pImpl->remove_wm_devicechange_func(uEventType);
 }
 
+BOOL Watcher::UnregisterDeviceChangeEventListener()
+{
+	return (BOOL)pImpl->remove_wm_devicechange_func();
+}
+
 BOOL Watcher::RegisterDeviceArrivalEventListener(std::function<DeviceChangeEventListener>  const &listener)
 {
 	return (BOOL)pImpl->add_wm_devicechange_func(DBT_DEVICEARRIVAL, listener);
@@ -439,7 +466,6 @@ BOOL Watcher::UnregisterDeviceRemoveEventListener()
 	return (BOOL)pImpl->remove_wm_devicechange_func(DBT_DEVICEREMOVECOMPLETE);
 }
 
-
 BOOL Watcher::RegisterRawInputEventListener(Watcher::Target const &target, std::function<RawInputEventListener>  const &listener)
 {
 	return (BOOL)pImpl->add_wm_input_func(target, listener);
@@ -448,4 +474,27 @@ BOOL Watcher::RegisterRawInputEventListener(Watcher::Target const &target, std::
 BOOL Watcher::UnregisterRawInputEventListener(Watcher::Target const &target)
 {
 	return (BOOL)pImpl->remove_wm_input_func(target);
+}
+
+static Watcher::Target _raw_input_to_target(RawInput const &ri)
+{
+	Watcher::Target tgt;
+	tgt.VendorId = ri.GetVendorId(); tgt.ProductId = ri.GetProductId();
+	tgt.UsagePage = ri.GetUsagePage(); tgt.Usage = ri.GetUsage();
+	return tgt;
+}
+
+BOOL Watcher::RegisterRawInputEventListener(RawInput const &ri, std::function<RawInputEventListener>  const &listener)
+{
+	return (BOOL)pImpl->add_wm_input_func(_raw_input_to_target(ri), listener);
+}
+
+BOOL Watcher::UnregisterRawInputEventListener(RawInput const &ri)
+{
+	return (BOOL)pImpl->remove_wm_input_func(_raw_input_to_target(ri));
+}
+
+BOOL Watcher::UnregisterRawInputEventListener()
+{
+	return (BOOL)pImpl->remove_wm_input_func();
 }
