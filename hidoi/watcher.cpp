@@ -44,7 +44,7 @@ struct Watcher::Impl
 		auto rids = RawInput::Enumerate();
 		for (auto &r : rids)
 		{
-			if (r.IsRegistered(h_dlg_))
+			if (r.IsRegistered())
 			{	// already registered
 				bool is_target = false;
 				for (auto &l : listeners_)
@@ -55,7 +55,7 @@ struct Watcher::Impl
 						break;
 					}
 				}
-				if (!is_target) r.Unregister(h_dlg_); // this device should become non target
+				if (!is_target) r.Unregister(); // this device should become non target
 			}
 			else
 			{	// not registered yet
@@ -235,11 +235,9 @@ struct Watcher::Impl
 		switch (msg)
 		{
 		case WM_INPUT:
-			HIDOI_UTILS_TRACE_STR("WM_INPUT");
 			Watcher::GetInstance().pImpl->proc_wm_input(GET_RAWINPUT_CODE_WPARAM(wp), (HRAWINPUT)lp);
 			break;
 		case WM_DEVICECHANGE:
-			HIDOI_UTILS_TRACE_STR("WM_DEVICECHANGE");
 			Watcher::GetInstance().pImpl->proc_wm_devicechange((UINT)wp, (DWORD_PTR)lp);
 			break;
 		case WM_DESTROY:

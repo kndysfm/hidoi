@@ -22,7 +22,7 @@ namespace
 
 	std::map<HANDLE, rid_info_t> rid_infos_;
 
-	std::map<HWND, std::list<HANDLE>> registered_handles_;
+	std::map<HANDLE, HWND> registered_handles_;
 
 }
 
@@ -147,58 +147,47 @@ struct RawInput::Impl
 		rid.usUsage = inf_hid.usUsage;
 		if (::RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE)))
 		{
-			registered_handles_[hWnd].push_back(handle_);
-			registered_handles_[hWnd].sort();
-			registered_handles_[hWnd].unique();
+			registered_handles_[handle_] = hWnd;
 			return TRUE;
 		}
 
 		return FALSE;
 	}
 
-	BOOL unregister_rid(HWND hWnd)
+	BOOL unregister_rid()
 	{
 		std::lock_guard<std::mutex> lock(mtx_);
 
 		auto const &inf_hid = info_.info.hid;
 		RAWINPUTDEVICE rid;
-		rid.hwndTarget = hWnd;
+		rid.hwndTarget = NULL; // must be NULL
 		rid.dwFlags = RIDEV_REMOVE;
 		rid.usUsagePage = inf_hid.usUsagePage;
 		rid.usUsage = inf_hid.usUsage;
 		if (::RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE)))
 		{
-			registered_handles_[hWnd].remove(handle_);
+			registered_handles_.erase(handle_);
 			return TRUE;
 		}
 
 		return FALSE;
 	}
 
-	BOOL is_registered(HWND hWnd)
-	{
-		for (HANDLE h : registered_handles_[hWnd])
-		{
-			if (h == handle_) return TRUE;
-		}
-		return FALSE;
-	}
-
 	BOOL is_registered()
 	{
-		for (auto const &registered : registered_handles_)
+		for (auto const &h : registered_handles_)
 		{
-			if (is_registered(registered.first)) return TRUE;
+			if (h.first == handle_) return TRUE;
 		}
 		return FALSE;
 	}
 
-	static void unregister_all(HWND hWnd)
+	static void unregister_all()
 	{
 		std::lock_guard<std::mutex> lock(mtx_);
 
 		RAWINPUTDEVICE rid;
-		rid.hwndTarget = hWnd;
+		rid.hwndTarget = NULL; // must be NULL
 		rid.dwFlags = RIDEV_REMOVE;
 
 		for (auto const &itr : rid_infos_)
@@ -221,7 +210,7 @@ struct RawInput::Impl
 			}
 			::RegisterRawInputDevices(&rid, 1, sizeof(RAWINPUTDEVICE));
 		}
-		registered_handles_.erase(hWnd);
+		registered_handles_.clear();
 	}
 };
 
@@ -269,9 +258,9 @@ BOOL RawInput::Register(HWND hWnd)
 	return pImpl->register_rid(hWnd);
 }
 
-BOOL RawInput::Unregister(HWND hWnd)
+BOOL RawInput::Unregister()
 {
-	return pImpl->unregister_rid(hWnd);
+	return pImpl->unregister_rid();
 }
 
 BOOL RawInput::IsRegistered()
@@ -279,14 +268,9 @@ BOOL RawInput::IsRegistered()
 	return pImpl->is_registered();
 }
 
-BOOL RawInput::IsRegistered(HWND hWnd)
+void RawInput::UnregisterAll()
 {
-	return pImpl->is_registered(hWnd);
-}
-
-void RawInput::UnregisterAll(HWND hWnd)
-{
-	RawInput::Impl::unregister_all(hWnd);
+	RawInput::Impl::unregister_all();
 }
 
 USHORT RawInput::GetVendorId(void) const

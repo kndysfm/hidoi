@@ -36,14 +36,14 @@ int main()
 	watcher.RegisterRawInputEventListener(tgt, RawInputPenEventListener);
 
 	auto ris = hidoi::RawInput::SearchByUsage(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_PEN);
-	for (auto &dev : ris)
+	for (auto &ri : ris)
 	{
 		Tcout << _T("Raw input device is found:\r\n");
 		Tcout << std::hex << std::setfill(_T('0'));
-		Tcout << _T("\t Vendor ID: ") <<  std::setw(4) << dev.GetVendorId() << _T("H\r\n");
-		Tcout << _T("\t Product ID: ") << std::setw(4) << dev.GetProductId() << _T("H\r\n");
+		Tcout << _T("\t Vendor ID: ") <<  std::setw(4) << ri.GetVendorId() << _T("H\r\n");
+		Tcout << _T("\t Product ID: ") << std::setw(4) << ri.GetProductId() << _T("H\r\n");
 		Tcout << _T("\t Usage Page - Usage: ") <<
-			std::setw(4) << dev.GetUsagePage() << _T("H - ") << std::setw(4) << dev.GetUsage() << _T("H\r\n");
+			std::setw(4) << ri.GetUsagePage() << _T("H - ") << std::setw(4) << ri.GetUsage() << _T("H\r\n");
 	}
 
 	Tcout << _T("Press enter an any charactor\r\n");

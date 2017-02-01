@@ -45,13 +45,11 @@ namespace hidoi
 
 		BOOL Register(HWND hWnd);
 
-		BOOL Unregister(HWND hWnd);
+		BOOL Unregister();
 
 		BOOL IsRegistered();
 
-		BOOL IsRegistered(HWND hWnd);
-
-		static void UnregisterAll(HWND hWnd);
+		static void UnregisterAll();
 
 		USHORT GetVendorId(void) const;
 
