@@ -23,21 +23,24 @@ static void PenInputEventListener(std::vector<BYTE> const& dat)
 	Tcout << _T("\r\n");
 }
 
-hidoi::Parser p(_T(""));
-static void ParsingPenEventListener(std::vector<BYTE> const& dat/*, hidoi::Parser p*/)
+static void ParsingPenEventListener(std::vector<BYTE> const& dat, hidoi::Parser *p)
 {
-	auto const &r = p.ParseInput(dat);
+	auto const *r = p->ParseInput(dat);
 
-	auto x_logi = r.GetValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X);
-	auto x_phys = r.GetScaledValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X);
-	auto y_logi = r.GetValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y);
-	auto y_phys = r.GetScaledValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y);
-	auto p_logi = r.GetValue(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_TIP_PRESSURE);
+	if (r)
+	{
+		auto x_logi = r->GetValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X);
+		auto x_phys = r->GetScaledValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X);
+		auto y_logi = r->GetValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y);
+		auto y_phys = r->GetScaledValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y);
+		auto p_logi = r->GetValue(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_TIP_PRESSURE);
 
-	Tcout << std::dec;
-	Tcout << _T("x = ") << x_phys << _T("(") << x_logi << _T(")\r\n");
-	Tcout << _T("y = ") << y_phys << _T("(") << y_logi << _T(")\r\n");
-	Tcout << _T("p = ") << p_logi << _T("\r\n");
+		Tcout << std::dec;
+		Tcout << _T("x = ") << x_phys << _T("(") << x_logi << _T(")\r\n");
+		Tcout << _T("y = ") << y_phys << _T("(") << y_logi << _T(")\r\n");
+		Tcout << _T("p = ") << p_logi << _T("\r\n");
+	}
+
 }
 
 
@@ -54,6 +57,7 @@ int main()
 	watcher.RegisterRawInputEventListener(tgt, PenInputEventListener);
 
 	auto ris = hidoi::RawInput::SearchByUsage(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_PEN);
+	std::vector<hidoi::Parser> parsers;
 	for (auto &ri : ris)
 	{
 		Tcout << _T("Raw input device is found:\r\n");
@@ -62,8 +66,8 @@ int main()
 		Tcout << _T("\t Product ID: ") << std::setw(4) << ri.GetProductId() << _T("H\r\n");
 		Tcout << _T("\t Usage Page - Usage: ") <<
 			std::setw(4) << ri.GetUsagePage() << _T("H - ") << std::setw(4) << ri.GetUsage() << _T("H\r\n");
-		p = ri.GetParser();
-		watcher.RegisterRawInputEventListener(ri, ParsingPenEventListener);
+		parsers.push_back(ri.GetParser());
+		watcher.RegisterRawInputEventListener(ri, std::bind(ParsingPenEventListener, std::placeholders::_1, &parsers.back()));
 	}
 
 	Tcout << _T("Press enter an any charactor\r\n");

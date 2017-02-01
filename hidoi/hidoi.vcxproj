@@ -149,6 +149,7 @@
   <ItemGroup>
     <ClCompile Include="device.cpp" />
     <ClCompile Include="parser.cpp" />
+    <ClCompile Include="parser_report.cpp" />
     <ClCompile Include="ri.cpp" />
     <ClCompile Include="utils.cpp" />
     <ClCompile Include="watcher.cpp" />

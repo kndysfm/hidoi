@@ -8,161 +8,6 @@ EXTERN_C
 
 using namespace hidoi;
 
-typedef DWORD USAGEPAGE_USAGE;
-#define TO_USAGEPAGE_USAGE(page, usage)	(((USAGEPAGE_USAGE) page << 16) | usage)
-
-struct Parser::Report::Impl
-{
-public:
-	std::map<USAGEPAGE_USAGE, ULONG>				Values;
-	std::map<USAGEPAGE_USAGE, LONG>					ScaledValues;
-	std::map<USAGEPAGE_USAGE, std::vector<CHAR>>	ValueArrays;
-	std::map<USAGEPAGE_USAGE, BOOL>					Buttons;
-
-	void clear()
-	{
-		Values.clear(); ScaledValues.clear(); ValueArrays.clear();
-		Buttons.clear();
-	}
-
-	BOOL has_value(USAGEPAGE_USAGE upu) const
-	{
-		return Values.count(upu) != 0;
-	}
-	ULONG get_value(USAGEPAGE_USAGE upu)
-	{
-		return Values[upu];
-	}
-	BOOL set_value(USAGEPAGE_USAGE upu, ULONG v)
-	{
-		if (Values.count(upu) == 0)
-		{
-			Values[upu] = v; return TRUE;
-		}
-		else return FALSE;
-	}
-
-	BOOL has_scaled_value(USAGEPAGE_USAGE upu) const
-	{
-		return ScaledValues.count(upu) != 0;
-	}
-	LONG get_scaled_value(USAGEPAGE_USAGE upu)
-	{
-		return ScaledValues[upu];
-	}
-	BOOL set_scaled_value(USAGEPAGE_USAGE upu, LONG v)
-	{
-		if (ScaledValues.count(upu) == 0)
-		{
-			ScaledValues[upu] = v; return TRUE;
-		}
-		else return FALSE;
-	}
-
-	BOOL has_value_array(USAGEPAGE_USAGE upu) const
-	{
-		return ValueArrays.count(upu) != 0;
-	}
-	std::vector<CHAR> get_value_array(USAGEPAGE_USAGE upu)
-	{
-		return ValueArrays[upu];
-	}
-	BOOL set_value_array(USAGEPAGE_USAGE upu, std::vector<CHAR> a)
-	{
-		if (ValueArrays.count(upu) == 0)
-		{
-			ValueArrays[upu] = a; return TRUE;
-		}
-		else return FALSE;
-	}
-
-	BOOL has_button(USAGEPAGE_USAGE upu) const
-	{
-		return Buttons.count(upu) != 0;
-	}
-	BOOL get_button(USAGEPAGE_USAGE upu)
-	{
-		return Buttons[upu];
-	}
-	BOOL set_button(USAGEPAGE_USAGE upu, BOOL b)
-	{
-		if (Buttons.count(upu) == 0)
-		{
-			Buttons[upu] = b; return TRUE;
-		}
-		else return FALSE;
-	}
-};
-
-Parser::Report::Report(): pImpl(new Parser::Report::Impl) { }
-Parser::Report::Report(Parser::Report &&r) 
-{
-	this->pImpl.swap(r.pImpl); 
-}
-Parser::Report & Parser::Report::operator=(Parser::Report &&r)
-{
-	this->pImpl.swap(r.pImpl);
-	return *this; 
-}
-Parser::Report::~Report() { }
-
-void Parser::Report::Clear() { pImpl->clear(); }
-
-BOOL Parser::Report::HasValue(USAGE page, USAGE usage) const
-{
-	return pImpl->has_value(TO_USAGEPAGE_USAGE(page, usage));
-}
-ULONG Parser::Report::GetValue(USAGE page, USAGE usage) const
-{
-	return pImpl->get_value(TO_USAGEPAGE_USAGE(page, usage));
-}
-BOOL Parser::Report::SetValue(USAGE page, USAGE usage, ULONG value)
-{
-	return pImpl->set_value(TO_USAGEPAGE_USAGE(page, usage), value);
-}
-
-BOOL Parser::Report::HasScaledValue(USAGE page, USAGE usage) const
-{
-	return pImpl->has_scaled_value(TO_USAGEPAGE_USAGE(page, usage));
-}
-LONG Parser::Report::GetScaledValue(USAGE page, USAGE usage) const
-{
-	return pImpl->get_scaled_value(TO_USAGEPAGE_USAGE(page, usage));
-}
-BOOL Parser::Report::SetScaledValue(USAGE page, USAGE usage, LONG value)
-{
-	return pImpl->set_scaled_value(TO_USAGEPAGE_USAGE(page, usage), value);
-}
-
-BOOL Parser::Report::HasValueArray(USAGE page, USAGE usage) const
-{
-	return pImpl->has_value_array(TO_USAGEPAGE_USAGE(page, usage));
-}
-std::vector<CHAR> const &Parser::Report::GetValueArray(USAGE page, USAGE usage) const
-{
-	return pImpl->get_value_array(TO_USAGEPAGE_USAGE(page, usage));
-}
-
-BOOL Parser::Report::SetValueArray(USAGE page, USAGE usage, std::vector<CHAR> values)
-{
-	return pImpl->set_value_array(TO_USAGEPAGE_USAGE(page, usage), values);
-}
-
-
-BOOL Parser::Report::HasButton(USAGE page, USAGE usage) const
-{
-	return pImpl->has_button(TO_USAGEPAGE_USAGE(page, usage));
-}
-BOOL Parser::Report::GetButton(USAGE page, USAGE usage) const
-{
-	return pImpl->get_button(TO_USAGEPAGE_USAGE(page, usage));
-}
-BOOL Parser::Report::SetButton(USAGE page, USAGE usage, BOOL pressed)
-{
-	return pImpl->set_button(TO_USAGEPAGE_USAGE(page, usage), pressed);
-}
-
-
 struct Parser::Impl
 {
 private:
@@ -317,7 +162,7 @@ public:
 			{
 				ULONG val = 0;
 				LONG phys_val = 0;
-				status = HidP_GetUsageValue(rep_type, page, 0, usage, &val, pp_, (PCHAR)report.data(), report.size()); handle_hidp_status(status);
+				status = HidP_GetUsageValue(rep_type, page, 0, usage, &val, pp_, (PCHAR)report.data(), report.size());
 				if (status == HIDP_STATUS_SUCCESS) r->SetValue(page, usage, val);
 				status = HidP_GetScaledUsageValue(rep_type, page, 0, usage, &phys_val, pp_, (PCHAR)report.data(), report.size());
 				if (status == HIDP_STATUS_SUCCESS) r->SetScaledValue(page, usage, phys_val);
@@ -332,6 +177,19 @@ public:
 			}
 		}
 
+		ULONG len = 0;
+		std::vector<USAGE_AND_PAGE> btns_pressed;
+		::HidP_GetUsagesEx(rep_type, 0, NULL, &len, pp_, (PCHAR)report.data(), report.size());
+		if (len > 0)
+		{
+			btns_pressed.resize(len);
+			::HidP_GetUsagesEx(rep_type, 0, btns_pressed.data(), &len, pp_, (PCHAR)report.data(), report.size());
+		}
+		if (len > 1)
+		{
+			;
+		}
+
 		for (auto const &bc: caps->ButtonCaps)
 		{
 			if (bc.ReportID != report[0]) continue; ///BUGBUG not considering report without ID
@@ -339,16 +197,18 @@ public:
 			USHORT page = bc.UsagePage;
 			USHORT usage = bc.NotRange.Usage; ///BUGBUG not considering buttons as range of usage
 
-			ULONG val;
-			NTSTATUS status = HidP_GetUsageValue(rep_type, page, 0, usage, &val, pp_, (PCHAR)report.data(), report.size()); handle_hidp_status(status);
-			if (status == HIDP_STATUS_SUCCESS) r->SetButton(page, usage, TRUE);
-			else if (status == HIDP_STATUS_BUTTON_NOT_PRESSED) r->SetButton(page, usage, FALSE);
+			for (auto const &b : btns_pressed)
+			{
+				r->SetButton(page, usage, (b.UsagePage == page && b.Usage == usage));
+			}
 		}
 
 		return r;
 	}
 
 };
+
+Parser::Parser() { /*pImpl = nullptr;*/ }
 
 Parser::Parser(LPCTSTR name):
 	pImpl(new Impl(name))
@@ -371,14 +231,14 @@ Parser::~Parser()
 {
 }
 
-Parser::Report const & Parser::ParseInput(std::vector<BYTE> const &report)
+Parser::Report const * Parser::ParseInput(std::vector<BYTE> const &report)
 {
 	std::vector<BYTE> buf = report;
-	return *pImpl->parse(HidP_Input, buf);
+	return pImpl? pImpl->parse(HidP_Input, buf): nullptr;
 }
 
-Parser::Report const & Parser::ParseFeature(std::vector<BYTE> const &report)
+Parser::Report const * Parser::ParseFeature(std::vector<BYTE> const &report)
 {
 	std::vector<BYTE> buf = report;
-	return *pImpl->parse(HidP_Feature, buf);
+	return pImpl? pImpl->parse(HidP_Feature, buf): nullptr;
 }

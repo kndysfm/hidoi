@@ -7,9 +7,9 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include "tstring.h"
 #include "utils.h"
-#include "device.h"
 #include "parser.h"
+#include "device.h"
 #include "ri.h"
 #include "watcher.h"
-#include "tstring.h"
