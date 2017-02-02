@@ -42,8 +42,8 @@ static void ParsingPenEventListener(std::vector<BYTE> const& dat, hidoi::Parser 
 		auto p_logi = r->GetValue(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_TIP_PRESSURE);
 
 		Tcout << std::dec;
-		Tcout << _T("x = ") << x_phys << _T("(") << x_rate * 100.0 << _T("%)\r\n");
-		Tcout << _T("y = ") << y_phys << _T("(") << y_rate * 100.0 << _T("%)\r\n");
+		Tcout << _T("x = ") << x_phys << _T("(") << std::setw(2) << x_rate * 100.0 << _T("%)\r\n");
+		Tcout << _T("y = ") << y_phys << _T("(") << std::setw(2) << y_rate * 100.0 << _T("%)\r\n");
 		Tcout << _T("p = ") << p_logi << _T("\r\n");
 
 #if 0 // test code for deparsing
@@ -80,6 +80,7 @@ int main()
 
 	auto ris = hidoi::RawInput::SearchByUsage(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_PEN);
 	std::vector<hidoi::Parser> parsers;
+	parsers.reserve(ris.size()); // important reservation in advance to prevent changing where "parser.back()" is pointing 
 	for (auto &ri : ris)
 	{
 		Tcout << _T("Raw input device is found:\r\n");
