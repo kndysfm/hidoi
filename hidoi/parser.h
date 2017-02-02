@@ -12,13 +12,13 @@ namespace hidoi
 		private:
 			struct Impl;
 			std::unique_ptr<Report::Impl> pImpl;
-			Report(Report const &) = delete;
-			Report & operator=(Report const &) = delete;
-			Report(Report &&);
-			Report & operator=(Report &&);
 
 		public:
 			Report();
+			Report(Report const &);
+			Report & operator=(Report const &);
+			Report(Report &&);
+			Report & operator=(Report &&);
 			virtual ~Report();
 
 			void Clear();
@@ -54,12 +54,40 @@ namespace hidoi
 		Parser & operator=(Parser &&);
 		virtual ~Parser();
 
+		//! subset of HIDP_VALUE_CAPS structure
+		struct ValueCaps
+		{
+			ULONG    UnitsExp, Units;
+			LONG     LogicalMin, LogicalMax;
+			LONG     PhysicalMin, PhysicalMax;
+		};
+
+		BOOL HasInputValue(USAGE page, USAGE usage) const;
+		BOOL HasInputButton(USAGE page, USAGE usage) const;
+		BOOL GetInputReportId(USAGE page, USAGE usage, LPBYTE report_id) const;
+		BOOL GetInputValueCaps(USAGE page, USAGE usage, ValueCaps *caps) const;
+
+		BOOL HasFeatureValue(USAGE page, USAGE usage) const;
+		BOOL HasFeatureButton(USAGE page, USAGE usage) const;
+		BOOL GetFeatureReportId(USAGE page, USAGE usage, LPBYTE report_id) const;
+		BOOL GetFeatureValueCaps(USAGE page, USAGE usage, ValueCaps *caps) const;
+
+		BOOL HasOutputValue(USAGE page, USAGE usage) const;
+		BOOL HasOutputButton(USAGE page, USAGE usage) const;
+		BOOL GetOutputReportId(USAGE page, USAGE usage, LPBYTE report_id) const;
+		BOOL GetOutputValueCaps(USAGE page, USAGE usage, ValueCaps *caps) const;
 
 		Report const * ParseInput(std::vector<BYTE> const &report);
 
 		std::vector<BYTE> DeparseInput(BYTE report_id, Report const &report);
 
 		Report const * ParseFeature(std::vector<BYTE> const &report);
+
+		std::vector<BYTE> DeparseFeature(BYTE report_id, Report const &report);
+
+		Report const * ParseOutput(std::vector<BYTE> const &report);
+
+		std::vector<BYTE> DeparseOutput(BYTE report_id, Report const &report);
 
 	};
 

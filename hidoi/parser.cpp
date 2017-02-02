@@ -23,7 +23,7 @@ private:
 	};
 
 	ReportCaps		caps_input_,	caps_output_,	caps_feature_;
-	Report			rep_input_,		rep_output,		rep_feature_;
+	Report			rep_input_,		rep_output_,		rep_feature_;
 
 	void init_caps(HIDP_REPORT_TYPE rep_type, ReportCaps *r)
 	{
@@ -49,6 +49,39 @@ private:
 			r->ButtonCaps.push_back(bcaps_buf[idx]);
 		}
 		delete[] bcaps_buf;
+	}
+
+	ReportCaps * get_caps(HIDP_REPORT_TYPE rep_type)
+	{
+		switch (rep_type)
+		{
+		case HidP_Input: return &caps_input_;
+		case HidP_Output: return &caps_output_; 
+		case HidP_Feature: return &caps_feature_; 
+		default: return nullptr;
+		}
+	}
+
+	Report * get_report(HIDP_REPORT_TYPE rep_type)
+	{
+		switch (rep_type)
+		{
+		case HidP_Input: return &rep_input_;
+		case HidP_Output: return &rep_output_;
+		case HidP_Feature: return &rep_feature_;
+		default: return nullptr;
+		}
+	}
+
+	USHORT get_byte_length(HIDP_REPORT_TYPE rep_type) const
+	{
+		switch (rep_type)
+		{
+		case HidP_Input: return caps_hid_.InputReportByteLength;
+		case HidP_Output: return caps_hid_.OutputReportByteLength;
+		case HidP_Feature: return caps_hid_.FeatureReportByteLength;
+		default: return 0;
+		}
 	}
 
 public:
@@ -85,6 +118,78 @@ public:
 		init_caps(HidP_Input, &caps_input_);
 		init_caps(HidP_Output, &caps_output_);
 		init_caps(HidP_Feature, &caps_feature_);
+	}
+
+	BOOL has_value(HIDP_REPORT_TYPE rep_type, USAGE page, USAGE usage)
+	{
+		auto *caps = get_caps(rep_type);
+		if (!caps) return FALSE;
+		
+		for (auto const &c : caps->ValueCaps)
+		{
+			if (page == c.UsagePage && usage == c.NotRange.Usage) return TRUE;
+		}
+
+		return FALSE;
+	}
+
+	BOOL has_button(HIDP_REPORT_TYPE rep_type, USAGE page, USAGE usage)
+	{
+		auto *caps = get_caps(rep_type);
+		if (!caps) return FALSE;
+
+		for (auto const &c : caps->ButtonCaps)
+		{
+			if (page == c.UsagePage && usage == c.NotRange.Usage) return TRUE;
+		}
+
+		return FALSE;
+	}
+
+	BOOL get_report_id(HIDP_REPORT_TYPE rep_type, USAGE page, USAGE usage, LPBYTE report_id)
+	{
+		auto *caps = get_caps(rep_type);
+		if (!caps) return FALSE;
+
+		for (auto const &c : caps->ValueCaps)
+		{
+			if (page == c.UsagePage && usage == c.NotRange.Usage)
+			{
+				*report_id = c.ReportID;
+				return TRUE;
+			}
+		}
+		for (auto const &c : caps->ButtonCaps)
+		{
+			if (page == c.UsagePage && usage == c.NotRange.Usage) 
+			{
+				*report_id = c.ReportID;
+				return TRUE;
+			}
+		}
+
+		return FALSE;
+	}
+
+	BOOL get_value_caps(HIDP_REPORT_TYPE rep_type, USAGE page, USAGE usage, ValueCaps *dst)
+	{
+		auto *caps = get_caps(rep_type);
+		if (!caps) return FALSE;
+
+		for (auto const &c : caps->ValueCaps)
+		{
+			if (page == c.UsagePage && usage == c.NotRange.Usage)
+			{
+				dst->UnitsExp		= c.UnitsExp;
+				dst->Units			= c.Units;
+				dst->LogicalMin		= c.LogicalMin;
+				dst->LogicalMax		= c.LogicalMax;
+				dst->PhysicalMin	= c.PhysicalMin;
+				dst->PhysicalMax	= c.PhysicalMax;
+				return TRUE;
+			}
+		}
+		return FALSE;
 	}
 
 	static bool handle_hidp_status(NTSTATUS s)
@@ -137,18 +242,9 @@ public:
 
 	Report const * parse(HIDP_REPORT_TYPE rep_type, std::vector<BYTE> &report)
 	{
-		Report *r;
-		ReportCaps *caps;
-		switch (rep_type)
-		{
-		case HidP_Input: caps = &caps_input_; r = &rep_input_;
-		break;
-		case HidP_Output: caps = &caps_output_;  r = &rep_output;
-		break;
-		case HidP_Feature: caps = &caps_feature_; r = &rep_feature_;
-		break;
-		default: return nullptr;
-		}
+		Report *r = get_report(rep_type);
+		ReportCaps *caps = get_caps(rep_type);
+		if (!r || !caps) return nullptr;
 
 		r->Clear();
 
@@ -207,19 +303,12 @@ public:
 	std::vector<BYTE> deparse(HIDP_REPORT_TYPE rep_type, UCHAR report_id, Report const &report)
 	{
 		std::vector<BYTE> rep_raw;
-		ReportCaps *caps;
-		ULONG len = 0;
-		switch (rep_type)
-		{
-		case HidP_Input: caps = &caps_input_; len = caps_hid_.InputReportByteLength;
-			break;
-		case HidP_Output: caps = &caps_output_;  len = caps_hid_.OutputReportByteLength;
-			break;
-		case HidP_Feature: caps = &caps_feature_; len = caps_hid_.FeatureReportByteLength;
-			break;
-		default: return rep_raw;
-		}
 
+		ReportCaps *caps = get_caps(rep_type);
+		if (!caps) return rep_raw;
+		
+		ULONG len = get_byte_length(rep_type);
+		if (len == 0) return rep_raw;
 		rep_raw.resize(len, 0x00);
 
 		ULONG length = caps->ValueCaps.size();
@@ -262,7 +351,7 @@ public:
 
 };
 
-Parser::Parser() { /*pImpl = nullptr;*/ }
+Parser::Parser(): pImpl(nullptr) { }
 
 Parser::Parser(LPCTSTR name):
 	pImpl(new Impl(name))
@@ -280,9 +369,68 @@ Parser & Parser::operator=(Parser &&r)
 	return *this;
 }
 
-
 Parser::~Parser()
 {
+}
+
+BOOL Parser::HasInputValue(USAGE page, USAGE usage) const
+{
+	return pImpl ? pImpl->has_value(HidP_Input, page, usage) : FALSE;
+}
+
+BOOL Parser::HasInputButton(USAGE page, USAGE usage) const
+{
+	return pImpl ? pImpl->has_button(HidP_Input, page, usage) : FALSE;
+}
+
+BOOL Parser::GetInputReportId(USAGE page, USAGE usage, LPBYTE report_id) const
+{
+	return pImpl ? pImpl->get_report_id(HidP_Input, page, usage, report_id) : FALSE;
+}
+
+BOOL Parser::GetInputValueCaps(USAGE page, USAGE usage, ValueCaps *caps) const
+{
+	return pImpl ? pImpl->get_value_caps(HidP_Input, page, usage, caps) : FALSE;
+}
+
+BOOL Parser::HasOutputValue(USAGE page, USAGE usage) const
+{
+	return pImpl ? pImpl->has_value(HidP_Output, page, usage) : FALSE;
+}
+
+BOOL Parser::HasOutputButton(USAGE page, USAGE usage) const
+{
+	return pImpl ? pImpl->has_button(HidP_Output, page, usage) : FALSE;
+}
+
+BOOL Parser::GetOutputReportId(USAGE page, USAGE usage, LPBYTE report_id) const
+{
+	return pImpl ? pImpl->get_report_id(HidP_Output, page, usage, report_id) : FALSE;
+}
+
+BOOL Parser::GetOutputValueCaps(USAGE page, USAGE usage, ValueCaps *caps) const
+{
+	return pImpl ? pImpl->get_value_caps(HidP_Output, page, usage, caps) : FALSE;
+}
+
+BOOL Parser::HasFeatureValue(USAGE page, USAGE usage) const
+{
+	return pImpl ? pImpl->has_value(HidP_Feature, page, usage) : FALSE;
+}
+
+BOOL Parser::HasFeatureButton(USAGE page, USAGE usage) const
+{
+	return pImpl ? pImpl->has_button(HidP_Feature, page, usage) : FALSE;
+}
+
+BOOL Parser::GetFeatureReportId(USAGE page, USAGE usage, LPBYTE report_id) const
+{
+	return pImpl ? pImpl->get_report_id(HidP_Feature, page, usage, report_id) : FALSE;
+}
+
+BOOL Parser::GetFeatureValueCaps(USAGE page, USAGE usage, ValueCaps *caps) const
+{
+	return pImpl ? pImpl->get_value_caps(HidP_Feature, page, usage, caps) : FALSE;
 }
 
 Parser::Report const * Parser::ParseInput(std::vector<BYTE> const &report)
@@ -301,3 +449,20 @@ Parser::Report const * Parser::ParseFeature(std::vector<BYTE> const &report)
 	std::vector<BYTE> buf = report;
 	return pImpl? pImpl->parse(HidP_Feature, buf): nullptr;
 }
+
+std::vector<BYTE> Parser::DeparseFeature(BYTE report_id, Report const &report)
+{
+	return pImpl ? pImpl->deparse(HidP_Feature, report_id, report) : std::vector<BYTE>();
+}
+
+Parser::Report const * Parser::ParseOutput(std::vector<BYTE> const &report)
+{
+	std::vector<BYTE> buf = report;
+	return pImpl ? pImpl->parse(HidP_Output, buf) : nullptr;
+}
+
+std::vector<BYTE> Parser::DeparseOutput(BYTE report_id, Report const &report)
+{
+	return pImpl ? pImpl->deparse(HidP_Output, report_id, report) : std::vector<BYTE>();
+}
+

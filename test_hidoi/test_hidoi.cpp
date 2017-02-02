@@ -10,10 +10,10 @@ USING_TCHAR_CONSOLE
 
 #include <Dbt.h>
 
-//static void OnDeviceNodesChange(DWORD_PTR dwData)
-//{
-//	Tcout << _T("\t DBT_DEVNODES_CHANGED received !! \r\n");
-//}
+static void OnDeviceNodesChange(DWORD_PTR dwData)
+{
+	Tcout << _T("\t DBT_DEVNODES_CHANGED received !! \r\n");
+}
 
 #include <iomanip>
 static void PenInputEventListener(std::vector<BYTE> const& dat)
@@ -29,17 +29,24 @@ static void ParsingPenEventListener(std::vector<BYTE> const& dat, hidoi::Parser 
 
 	if (r)
 	{
+		hidoi::Parser::ValueCaps x_caps, y_caps;
+		p->GetInputValueCaps(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X, &x_caps);
+		p->GetInputValueCaps(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y, &y_caps);
+
 		auto x_logi = r->GetValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X);
 		auto x_phys = r->GetScaledValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_X);
+		auto x_rate = (double) (x_logi - x_caps.LogicalMin) / (x_caps.LogicalMax - x_caps.LogicalMin);
 		auto y_logi = r->GetValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y);
 		auto y_phys = r->GetScaledValue(HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_Y);
+		auto y_rate = (double)(y_logi - y_caps.LogicalMin) / (y_caps.LogicalMax - y_caps.LogicalMin);
 		auto p_logi = r->GetValue(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_TIP_PRESSURE);
 
 		Tcout << std::dec;
-		Tcout << _T("x = ") << x_phys << _T("(") << x_logi << _T(")\r\n");
-		Tcout << _T("y = ") << y_phys << _T("(") << y_logi << _T(")\r\n");
+		Tcout << _T("x = ") << x_phys << _T("(") << x_rate * 100.0 << _T("%)\r\n");
+		Tcout << _T("y = ") << y_phys << _T("(") << y_rate * 100.0 << _T("%)\r\n");
 		Tcout << _T("p = ") << p_logi << _T("\r\n");
 
+#if 0 // test code for deparsing
 		std::vector<BYTE> deparsed = p->DeparseInput(dat[0], *r);
 		if (deparsed[1] == dat[1] && deparsed[2] == dat[2])
 		{
@@ -49,6 +56,7 @@ static void ParsingPenEventListener(std::vector<BYTE> const& dat, hidoi::Parser 
 		{
 			Tcout << _T("Bad deparsing !\r\n");
 		}
+#endif
 	}
 
 }
@@ -56,10 +64,14 @@ static void ParsingPenEventListener(std::vector<BYTE> const& dat, hidoi::Parser 
 
 int main()
 {
+	TCHAR c_dmy;
+	Tcout << _T("Enter a charactor\r\n");
+	Tcin >> c_dmy;
+	Tcout << _T("Test phase 1: Handling WM_DEVICECHANGE and WM_INPUT in background\r\n");
+
 	auto &watcher = hidoi::Watcher::GetInstance();
-	//watcher.RegisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED, OnDeviceNodesChange);
-	watcher.RegisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED, [](DWORD_PTR) {Tcout << _T("\t DBT_DEVNODES_CHANGED received !! \r\n"); });
-	watcher.RegisterDeviceArrivalEventListener([](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEARRIVAL received !! \r\n"); });
+	watcher.RegisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED, OnDeviceNodesChange); // register function pointer
+	watcher.RegisterDeviceArrivalEventListener([](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEARRIVAL received !! \r\n"); }); // register lambda formula
 	watcher.RegisterDeviceRemoveEventListener([](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEREMOVECOMPLETE received !! \r\n"); });
 	hidoi::Watcher::Target tgt;
 	tgt.VendorId = 0; tgt.ProductId = 0; tgt.UsagePage = HID_USAGE_PAGE_DIGITIZER; tgt.Usage = HID_USAGE_DIGITIZER_PEN;
@@ -80,8 +92,7 @@ int main()
 		watcher.RegisterRawInputEventListener(ri, std::bind(ParsingPenEventListener, std::placeholders::_1, &parsers.back()));
 	}
 
-	Tcout << _T("Press enter an any charactor\r\n");
-	TCHAR c_dmy;
+	Tcout << _T("Enter a charactor\r\n");
 	Tcin >> c_dmy;
 
 	watcher.UnregisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED);
@@ -91,8 +102,10 @@ int main()
 	watcher.UnregisterRawInputEventListener(tgt);
 	watcher.UnregisterRawInputEventListener(); // all
 	Tcout << _T("Listeners are removed from the Watcher !!\r\n");
+	Tcout << _T("Test phase 2: Contorolling HID with file handle\r\n");
 
-	auto paths = hidoi::Device::Search(0x056A, 0x0000, 0x0000, HID_USAGE_DIGITIZER_PEN);
+	// search device path for Wacom Active-ES pen I/Fs
+	auto paths = hidoi::Device::Search(0x056A, 0x0000, 0xFF11, HID_USAGE_DIGITIZER_PEN);
 	if (paths.size() == 0) Tcout << _T("No Wacom Pen device was found !!\r\n");
 	hidoi::Device dev;
 	for (auto &p : paths)
@@ -119,7 +132,7 @@ int main()
 		dev.SetFeature({ 0x0b, 0x01 }); // switch I/F for interrupt report
 	}
 
-	Tcout << _T("Press enter an any charactor\r\n");
+	Tcout << _T("Enter a charactor to quit\r\n");
 	Tcin >> c_dmy;
 
 	dev.QuitListeningInput();

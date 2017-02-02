@@ -85,6 +85,15 @@ Parser::Report & Parser::Report::operator=(Parser::Report &&r)
 	this->pImpl.swap(r.pImpl);
 	return *this;
 }
+Parser::Report::Report(Parser::Report const &r)
+{
+	*this->pImpl = *r.pImpl;
+}
+Parser::Report & Parser::Report::operator=(Parser::Report const &r)
+{
+	*this->pImpl = *r.pImpl;
+	return *this;
+}
 Parser::Report::~Report() { }
 
 void Parser::Report::Clear() { pImpl->clear(); }
