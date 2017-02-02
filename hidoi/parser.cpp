@@ -327,7 +327,7 @@ public:
 			else if (vc.ReportCount > 1)
 			{
 				std::vector<CHAR> buf = report.GetValueArray(page, usage);
-				status = HidP_SetUsageValueArray(rep_type, page, 0, usage, buf.data(), buf.size(), pp_, (PCHAR)rep_raw.data(), len);
+				status = HidP_SetUsageValueArray(rep_type, page, 0, usage, buf.data(), (USHORT)buf.size(), pp_, (PCHAR)rep_raw.data(), len);
 				if (status != HIDP_STATUS_SUCCESS) handle_hidp_status(status);
 			}
 		}

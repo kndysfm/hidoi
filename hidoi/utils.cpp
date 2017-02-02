@@ -28,8 +28,8 @@ void hidoi::utils::assert(BOOL condition, LPCTSTR message)
 }
 
 #else
-void hidoi::utils::Trace(LPCTSTR fmt, ...) {}
-void Assert(BOOL expression, LPCTSTR message) { }
+void hidoi::utils::trace(LPCTSTR fmt, ...) {}
+void assert(BOOL expression, LPCTSTR message) { }
 #endif
 
 
