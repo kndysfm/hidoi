@@ -1,12 +1,8 @@
 #pragma once
-
 #include "hidoi.h"
 
 namespace hidoi
 {
-	class RawInput;
-	class Parser;
-
 	class Device
 	{
 
@@ -16,9 +12,11 @@ namespace hidoi
 			struct Impl;
 			Impl *pImpl;
 			Path & operator=(Path const&);
+			Path & operator=(Path &&);
 			Path(Path const&);
 			Path(LPCTSTR ctstr);
 			~Path();
+			bool operator==(Path const&) const;
 		};
 
 	private: // types and variables
@@ -62,6 +60,8 @@ namespace hidoi
 	public: // class methods
 
 		Device();
+
+		Device(Path const &p) : Device() { Open(p); }
 
 		virtual ~Device();
 

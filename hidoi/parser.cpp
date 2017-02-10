@@ -1,3 +1,4 @@
+#define _HIDOI_PARSER_CPP_
 #include "parser.h"
 
 EXTERN_C
@@ -5,6 +6,9 @@ EXTERN_C
 #include <hidsdi.h>
 }
 #include <map>
+
+#include "tstring.h"
+#include "utils.h"
 
 using namespace hidoi;
 

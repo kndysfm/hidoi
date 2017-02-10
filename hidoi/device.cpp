@@ -1,3 +1,4 @@
+#define _HIDOI_DEVICE_CPP_
 #include "device.h"
 
 #include <setupapi.h>
@@ -44,9 +45,16 @@ Device::Path::Path(Device::Path const& p) : pImpl(new Device::Path::Impl(p.pImpl
 {
 }
 
-Device::Path & Device::Path::operator=(Device::Path const& l)
+Device::Path & Device::Path::operator=(Device::Path const& r)
 {
-	*this->pImpl = *l.pImpl;
+	*this->pImpl = *r.pImpl;
+	return *this;
+}
+
+Device::Path & Device::Path::operator=(Path && r)
+{
+	this->pImpl = r.pImpl;
+	r.pImpl = nullptr;
 	return *this;
 }
 
@@ -55,6 +63,11 @@ Device::Path::Path(LPCTSTR ctstr): pImpl(new Device::Path::Impl(ctstr))
 }
 
 Device::Path::~Path()  { delete pImpl; }
+
+bool Device::Path::operator==(Device::Path const& r) const
+{
+	return this->pImpl->tstr == r.pImpl->tstr;
+}
 
 struct Device::Impl
 {

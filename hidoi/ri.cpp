@@ -1,3 +1,4 @@
+#define _HIDOI_RI_CPP_
 #include "ri.h"
 #include <mutex>
 #include <map>
@@ -5,6 +6,8 @@
 
 #include "tstring.h"
 USING_TCHAR_STRING;
+
+#include "parser.h"
 
 using namespace hidoi;
 

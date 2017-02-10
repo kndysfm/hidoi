@@ -1,9 +1,9 @@
+#define _HIDOI_PARSER_REPORT_CPP_
 #include "parser.h"
 
 #include <map>
 
 using namespace hidoi;
-
 
 typedef DWORD USAGEPAGE_USAGE;
 #define TO_USAGEPAGE_USAGE(page, usage)	(((USAGEPAGE_USAGE) page << 16) | usage)
