@@ -21,32 +21,32 @@ static uint64_t target_to_ui64(Watcher::Target const &t)
 
 bool Watcher::Target::operator==(Target const & x) const
 {
-	return target_to_ui64(x) == target_to_ui64(*this);
+	return target_to_ui64(*this) == target_to_ui64(x);
 }
 
 bool Watcher::Target::operator!=(Target const & x) const
 {
-	return target_to_ui64(x) != target_to_ui64(*this);
+	return target_to_ui64(*this) != target_to_ui64(x);
 }
 
 bool Watcher::Target::operator<(Target const & x) const
 {
-	return target_to_ui64(x) < target_to_ui64(*this);
+	return target_to_ui64(*this) < target_to_ui64(x);
 }
 
 bool Watcher::Target::operator>(Target const & x) const
 {
-	return target_to_ui64(x) > target_to_ui64(*this);
+	return target_to_ui64(*this) > target_to_ui64(x);
 }
 
 bool Watcher::Target::operator<=(Target const & x) const
 {
-	return target_to_ui64(x) <= target_to_ui64(*this);
+	return target_to_ui64(*this) <= target_to_ui64(x);
 }
 
 bool Watcher::Target::operator>=(Target const & x) const
 {
-	return target_to_ui64(x) >= target_to_ui64(*this);
+	return target_to_ui64(*this) >= target_to_ui64(x);
 }
 
 
