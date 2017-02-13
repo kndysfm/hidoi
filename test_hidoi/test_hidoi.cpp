@@ -69,14 +69,20 @@ int main()
 	Tcin >> c_dmy;
 	Tcout << _T("Test phase 1: Handling WM_DEVICECHANGE and WM_INPUT in background\r\n");
 
+	hidoi::Watcher::Target tgt_all = { 0x056A, 0x011E, 0xFF11, HID_USAGE_DIGITIZER_PEN };
 	auto &watcher = hidoi::Watcher::GetInstance();
-	watcher.RegisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED, OnDeviceNodesChange); // register function pointer
-	watcher.RegisterDeviceArrivalEventListener([](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEARRIVAL received !! \r\n"); }); // register lambda formula
-	watcher.RegisterDeviceRemoveEventListener([](DWORD_PTR) {Tcout << _T("\t DBT_DEVICEREMOVECOMPLETE received !! \r\n"); });
+	// add handlers for WM_DEVICECHANGE about HID devices
+	watcher.WatchConnection(tgt_all,
+		[](hidoi::Device::Path) {Tcout << _T("\t DBT_DEVICEARRIVAL received !! \r\n"); },
+		[]() {Tcout << _T("\t DBT_DEVICEREMOVECOMPLETE received !! \r\n"); });
+	watcher.WatchDeviceChange([]() {Tcout << _T("Device Nodes Has Changed !!(1) \r\n"); });
+	watcher.WatchDeviceChange([]() {Tcout << _T("Device Nodes Has Changed !!(2) \r\n"); });
+
+	// add handler for WM_INPUT about HID devices
 	hidoi::Watcher::Target tgt;
 	tgt.VendorId = 0; tgt.ProductId = 0; tgt.UsagePage = HID_USAGE_PAGE_DIGITIZER; tgt.Usage = HID_USAGE_DIGITIZER_PEN;
 	Tcout << _T("Start watching Raw Input of HID and connection of device(s)\r\n");
-	watcher.RegisterRawInputEventListener(tgt, PenInputEventListener);
+	watcher.WatchRawInput(tgt, PenInputEventListener);
 
 	auto ris = hidoi::RawInput::SearchByUsage(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_PEN);
 	std::vector<hidoi::Parser> parsers;
@@ -90,18 +96,21 @@ int main()
 		Tcout << _T("\t Usage Page - Usage: ") <<
 			std::setw(4) << ri.GetUsagePage() << _T("H - ") << std::setw(4) << ri.GetUsage() << _T("H\r\n");
 		parsers.push_back(ri.GetParser());
-		watcher.RegisterRawInputEventListener(ri, std::bind(ParsingPenEventListener, std::placeholders::_1, &parsers.back()));
+		// the function object bound with its own parser can parse the HID Input report passed from watcher
+		watcher.WatchRawInput(ri, std::bind(ParsingPenEventListener, std::placeholders::_1, &parsers.back()));
 	}
 
 	Tcout << _T("Enter a charactor\r\n");
 	Tcin >> c_dmy;
+	
+	// remove handler for WM_INPUT
+	watcher.UnwatchRawInput(tgt);
+	// remove handlers for WM_DEVICECHANGE
+	watcher.UnwatchConnection(tgt_all);
+	watcher.UnwatchAllConnections(); // all
+	watcher.UnwatchAllRawInputs(); // all
+	watcher.UnwatchDeviceChange(); // all
 
-	watcher.UnregisterDeviceChangeEventListener(DBT_DEVNODES_CHANGED);
-	watcher.UnregisterDeviceArrivalEventListener();
-	watcher.UnregisterDeviceRemoveEventListener();
-	watcher.UnregisterDeviceChangeEventListener(); // all
-	watcher.UnregisterRawInputEventListener(tgt);
-	watcher.UnregisterRawInputEventListener(); // all
 	Tcout << _T("Listeners are removed from the Watcher !!\r\n");
 	Tcout << _T("Test phase 2: Contorolling HID with file handle\r\n");
 
