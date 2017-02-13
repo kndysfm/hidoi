@@ -195,7 +195,7 @@ struct Watcher::Impl
 
 		std::lock_guard<std::mutex> lock(mtx_listeners_);
 		path_handlers_[target] = connection_handlers_t(on_arrive, on_remove);
-		handle_connection_change(update_);
+		proc_wm_devicechange();
 
 		return true;
 	}
@@ -232,7 +232,7 @@ struct Watcher::Impl
 
 		std::lock_guard<std::mutex> lock(mtx_listeners_);
 		handlers_on_devchange.push_back(on_devchange);
-		handle_connection_change(update_);
+		proc_wm_devicechange();
 
 		return true;
 	}
@@ -247,20 +247,16 @@ struct Watcher::Impl
 		return true;
 	}
 
-	enum connection_t { invalid_, arrival_, remove_, update_ };
 	std::map< Watcher::Target, bool> count_connections_;
-	std::mutex mtx_arrival_, mtx_remove_;
+	std::mutex mtx_connection_;
 
-	void handle_connection_change(connection_t conn)
+	void handle_connection_change(bool by_wm)
 	{
-		if (conn == arrival_ || conn == update_) mtx_arrival_.lock();
-		if (conn == remove_ || conn == update_) mtx_remove_.lock();
-
-		if (conn != update_)
-		{	// only when the real WM_DEVICECHANGE has come
-			std::this_thread::sleep_for(std::chrono::milliseconds(500));
-		}
-
+		mtx_connection_.lock();
+		
+		if (by_wm) std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		else std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		
 		std::lock_guard<std::mutex> lock(mtx_listeners_);
 		// store the last connection counts
 		auto last_conn_status = count_connections_;
@@ -276,12 +272,9 @@ struct Watcher::Impl
 				Target t = h.first;
 				if (Device::Test(p, t.VendorId, t.ProductId, t.UsagePage, t.Usage))
 				{
-					if (conn == arrival_ || conn == update_)
-					{	// if DBT_DEVICEARRIVAL is coming
-						if (last_conn_status.count(t) == 0 || !last_conn_status[t])
-						{	// target has come
-							h.second.first(p);
-						}
+					if (last_conn_status.count(t) == 0 || !last_conn_status[t])
+					{	// target has come
+						h.second.first(p);
 					}
 					count_connections_[t] = true;
 				}
@@ -295,12 +288,9 @@ struct Watcher::Impl
 			if (count_connections_.count(t) == 0)
 			{	// target not found
 				count_connections_[t] = false;
-				if (conn == remove_ || conn == update_)
-				{	// if DBT_DEVICEREMOVECOMPLETE is coming
-					if (last_conn_status.count(t) != 0 && last_conn_status[t])
-					{	// target has gone
-						h.second.second();
-					}
+				if (last_conn_status.count(t) != 0 && last_conn_status[t])
+				{	// target has gone
+					h.second.second();
 				}
 			}
 		}
@@ -311,37 +301,23 @@ struct Watcher::Impl
 			h();
 		}
 
-		if (conn != update_)
+		if (by_wm)
 		{	// only when the real WM_DEVICECHANGE has come
 			register_wm_input_targets();
 		}
 
-		if (conn == remove_ || conn == update_) mtx_remove_.unlock();
-		if (conn == arrival_ || conn == update_) mtx_arrival_.unlock();
+		mtx_connection_.unlock();
 	}
 
-	std::thread th_arrival_, th_remove_, th_update_;
-	void proc_wm_devicechange(connection_t conn)
+	std::thread th_connection_;
+	void proc_wm_devicechange(bool by_wm = false)
 	{
-		if (conn == arrival_)
+		if (mtx_connection_.try_lock())
 		{
-			if (mtx_arrival_.try_lock())
-			{
-				mtx_arrival_.unlock();
-				if (th_arrival_.joinable()) th_arrival_.join();
-				std::thread th(std::bind(&Watcher::Impl::handle_connection_change, this, conn));
-				th_arrival_.swap(th);
-			}
-		}
-		else if (conn == remove_)
-		{
-			if (mtx_remove_.try_lock())
-			{
-				mtx_remove_.unlock();
-				if (th_remove_.joinable()) th_remove_.join();
-				std::thread th(std::bind(&Watcher::Impl::handle_connection_change, this, conn));
-				th_remove_.swap(th);
-			}
+			mtx_connection_.unlock();
+			if (th_connection_.joinable()) th_connection_.join();
+			std::thread th(std::bind(&Watcher::Impl::handle_connection_change, this, by_wm));
+			th_connection_.swap(th);
 		}
 	}
 
@@ -354,12 +330,9 @@ struct Watcher::Impl
 			break;
 		case WM_DEVICECHANGE:
 		{
-			connection_t conn = invalid_;
-			if (wp == DBT_DEVICEARRIVAL) conn = arrival_;
-			if (wp == DBT_DEVICEREMOVECOMPLETE) conn = remove_;
-			if (conn != invalid_)
-			{
-				Watcher::GetInstance().pImpl->proc_wm_devicechange(conn);
+			if (wp == DBT_DEVICEARRIVAL || wp == DBT_DEVICEREMOVECOMPLETE) 
+			{	// only when HID device connection has changed
+				Watcher::GetInstance().pImpl->proc_wm_devicechange();
 			}
 			break;
 		}
