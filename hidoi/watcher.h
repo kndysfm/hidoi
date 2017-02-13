@@ -13,8 +13,17 @@ namespace hidoi
 	public: // types
 		struct Target
 		{
-			USHORT VendorId, ProductId;
-			USAGE UsagePage, Usage;
+			const USHORT VendorId, ProductId;
+			const USAGE UsagePage, Usage;
+
+			Target(USHORT vid, USHORT pid, USAGE usagePage, USAGE usage) :
+				VendorId(vid), ProductId(pid), UsagePage(usagePage), Usage(usage) { }
+
+			Target(USAGE usagePage, USAGE usage) :
+				VendorId(0x0000), ProductId(0x0000), UsagePage(usagePage), Usage(usage) { }
+
+			Target() = delete;// :
+				//VendorId(0x0000), ProductId(0x0000), UsagePage(0x0000), Usage(0x0000) { }
 
 			bool operator==(Target const & x) const;
 			bool operator!=(Target const & x) const;

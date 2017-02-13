@@ -522,9 +522,7 @@ BOOL Watcher::UnwatchRawInput(Watcher::Target const &target)
 
 static Watcher::Target _raw_input_to_target(RawInput const &ri)
 {
-	Watcher::Target tgt;
-	tgt.VendorId = ri.GetVendorId(); tgt.ProductId = ri.GetProductId();
-	tgt.UsagePage = ri.GetUsagePage(); tgt.Usage = ri.GetUsage();
+	Watcher::Target tgt(ri.GetVendorId(), ri.GetProductId(), ri.GetUsagePage(), ri.GetUsage());
 	return tgt;
 }
 
