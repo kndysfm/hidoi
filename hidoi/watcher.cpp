@@ -1,3 +1,4 @@
+#define _HIDOI_WATCHER_CPP_
 #include "watcher.h"
 
 #include <thread>
@@ -13,31 +14,61 @@ EXTERN_C
 
 using namespace hidoi;
 
-#define DBT_ANY	(0xFFFF)
+static uint64_t target_to_ui64(Watcher::Target const &t)
+{
+	return (uint64_t)t.VendorId << 48 | (uint64_t)t.ProductId << 32 | t.UsagePage << 16 | t.Usage;
+}
+
+bool Watcher::Target::operator==(Target const & x) const
+{
+	return target_to_ui64(x) == target_to_ui64(*this);
+}
+
+bool Watcher::Target::operator!=(Target const & x) const
+{
+	return target_to_ui64(x) != target_to_ui64(*this);
+}
+
+bool Watcher::Target::operator<(Target const & x) const
+{
+	return target_to_ui64(x) < target_to_ui64(*this);
+}
+
+bool Watcher::Target::operator>(Target const & x) const
+{
+	return target_to_ui64(x) > target_to_ui64(*this);
+}
+
+bool Watcher::Target::operator<=(Target const & x) const
+{
+	return target_to_ui64(x) <= target_to_ui64(*this);
+}
+
+bool Watcher::Target::operator>=(Target const & x) const
+{
+	return target_to_ui64(x) >= target_to_ui64(*this);
+}
+
 
 struct Watcher::Impl
 {
 	std::mutex mtx_listeners_, mtx_th_watch_;
-	bool req_stop_;
 	std::thread th_watch_;
 	HWND h_dlg_;
-	HANDLE h_reg_notif_;
-	std::condition_variable cond_started_;
 
-	typedef std::pair<Watcher::Target, std::function<Watcher::RawInputEventListener>> wm_input_listner_t;
-	std::vector<wm_input_listner_t> listeners_;
-
+	typedef std::function<Watcher::RawInputHandler> wm_input_listner_t;
+	std::map<Watcher::Target, wm_input_listner_t> rawinput_listeners_;
 
 	std::vector<wm_input_listner_t> get_wm_input_listners(std::vector<RawInput> &ris)
 	{
 		std::vector<wm_input_listner_t> ls;
 		for (auto & ri : ris)
 		{
-			for (auto &l : listeners_)
+			for (auto &l : rawinput_listeners_)
 			{
 				if (ri.Test(l.first.VendorId, l.first.ProductId, l.first.UsagePage, l.first.Usage))
 				{
-					ls.push_back(l);
+					ls.push_back(l.second);
 				}
 			}
 		}
@@ -45,7 +76,7 @@ struct Watcher::Impl
 		return ls;
 	}
 
-	void register_wm_input_targets(DWORD_PTR)
+	void register_wm_input_targets()
 	{
 		auto rids = RawInput::Enumerate();
 		for (auto &r : rids)
@@ -53,7 +84,7 @@ struct Watcher::Impl
 			if (r.IsRegistered())
 			{	// already registered
 				bool is_target = false;
-				for (auto &l : listeners_)
+				for (auto &l : rawinput_listeners_)
 				{
 					if (r.Test(l.first.VendorId, l.first.ProductId, l.first.UsagePage, l.first.Usage))
 					{
@@ -65,7 +96,7 @@ struct Watcher::Impl
 			}
 			else
 			{	// not registered yet
-				for (auto &l : listeners_)
+				for (auto &l : rawinput_listeners_)
 				{
 					if (r.Test(l.first.VendorId, l.first.ProductId, l.first.UsagePage, l.first.Usage))
 					{	// it's target to listen event
@@ -106,7 +137,7 @@ struct Watcher::Impl
 						rep_in[i] = *src;
 					}
 					// pass dat vector to registerd functional object
-					for (auto &l : ls) l.second(rep_in);
+					for (auto &l : ls) l(rep_in);
 					raw += size;
 				}
 			}
@@ -114,15 +145,15 @@ struct Watcher::Impl
 		delete[] data;
 	}
 
-	bool add_wm_input_func(Watcher::Target const &tgt, std::function<RawInputEventListener>  const &listener)
+	bool add_wm_input_func(Watcher::Target const &tgt, std::function<RawInputHandler>  const &listener)
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
 		std::lock_guard<std::mutex> lock(mtx_listeners_);
 
-		wm_input_listner_t l(tgt, listener);
-		listeners_.push_back(l);
-		register_wm_input_targets(0);
+		wm_input_listner_t l(listener);
+		rawinput_listeners_[tgt] = (l);
+		register_wm_input_targets(); // update
 
 		return true;
 	}
@@ -132,16 +163,11 @@ struct Watcher::Impl
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
 		std::lock_guard<std::mutex> lock(mtx_listeners_);
-		for (auto itr = listeners_.begin(); itr != listeners_.end(); itr++)
+		if (rawinput_listeners_.count(tgt) == 1)
 		{
-			auto const &t = itr->first;
-			if (t.VendorId == tgt.VendorId && t.ProductId == tgt.ProductId &&
-				t.UsagePage == tgt.UsagePage && t.Usage == tgt.Usage)
-			{
-				listeners_.erase(itr);
-				register_wm_input_targets(0); // update
-				return true;
-			}
+			rawinput_listeners_.erase(tgt);
+			register_wm_input_targets(); // update
+			return true;
 		}
 
 		return false;
@@ -152,103 +178,170 @@ struct Watcher::Impl
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
 		std::lock_guard<std::mutex> lock(mtx_listeners_);
-		listeners_.clear();
-		register_wm_input_targets(0);
+		rawinput_listeners_.clear();
+		register_wm_input_targets(); // update
 
 		return true;
 	}
 
-	typedef std::function<Watcher::DeviceChangeEventListener> wm_devicechange_func;
+	typedef std::pair<std::function<DeviceArrivalHandler>, std::function<DeviceRemoveHandler>> connection_handlers_t;
+	std::map< Watcher::Target, connection_handlers_t> path_handlers_;
 
-	std::map<UINT, std::pair<wm_devicechange_func, std::thread>> map_wm_devicechange_listeners_;
+	typedef std::pair<std::function<void(void)>, std::thread> pair_function_thread_t;
 
-	bool add_wm_devicechange_func(UINT uEventType, wm_devicechange_func const &f)
+	bool add_handler_connection(Target const &target, std::function<DeviceArrivalHandler> const &on_arrive, std::function<DeviceRemoveHandler> const &on_remove)
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
 		std::lock_guard<std::mutex> lock(mtx_listeners_);
-		if (map_wm_devicechange_listeners_.count(uEventType) != 0) return false;
+		path_handlers_[target] = connection_handlers_t(on_arrive, on_remove);
+		handle_connection_change(update_);
 
-		map_wm_devicechange_listeners_[uEventType].first = f;
 		return true;
 	}
 
-	bool remove_wm_devicechange_func(UINT uEventType)
+	bool remove_handler_connection(Target const &target)
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
 		std::lock_guard<std::mutex> lock(mtx_listeners_);
-		if (map_wm_devicechange_listeners_.count(uEventType) != 1) return false;
-
-		map_wm_devicechange_listeners_.erase(uEventType);
-		return true;
-	}
-
-	bool remove_wm_devicechange_func() // remove all but for DBT_ANY(default) handler
-	{
-		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
-
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
-		map_wm_devicechange_listeners_.clear();
-		map_wm_devicechange_listeners_[DBT_ANY].first = std::bind(&Watcher::Impl::register_wm_input_targets, this, std::placeholders::_1);
-
-		return true;
-	}
-
-	void proc_wm_devicechange_async(UINT nEventType, DWORD_PTR dwData)
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
-		map_wm_devicechange_listeners_[nEventType].first(dwData);
-		map_wm_devicechange_listeners_[nEventType].second.detach();
-	}
-
-	void proc_wm_devicechange_start_thread(UINT nEventType, DWORD_PTR dwData)
-	{
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
-		if (map_wm_devicechange_listeners_.count(nEventType) == 1)
+		if (path_handlers_.count(target) == 1)
 		{
-			std::thread &th_proc = map_wm_devicechange_listeners_[nEventType].second;
-			if (!th_proc.joinable())
+			path_handlers_.erase(target);
+			return true;
+		}
+
+		return false;
+	}
+
+	bool remove_handler_connection()
+	{
+		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
+
+		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		path_handlers_.clear();
+
+		return true;
+	}
+
+	std::vector<std::function<DeviceChangeHandler>> handlers_on_devchange;
+
+	BOOL add_handler_devchange(std::function<DeviceChangeHandler> const &on_devchange)
+	{
+		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
+
+		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		handlers_on_devchange.push_back(on_devchange);
+		handle_connection_change(update_);
+
+		return true;
+	}
+
+	BOOL remove_handlers_devchange()
+	{
+		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
+
+		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		handlers_on_devchange.clear();
+
+		return true;
+	}
+
+	enum connection_t { invalid_, arrival_, remove_, update_ };
+	std::map< Watcher::Target, bool> count_connections_;
+	std::mutex mtx_arrival_, mtx_remove_;
+
+	void handle_connection_change(connection_t conn)
+	{
+		if (conn == arrival_ || conn == update_) mtx_arrival_.lock();
+		if (conn == remove_ || conn == update_) mtx_remove_.lock();
+
+		if (conn != update_)
+		{	// only when the real WM_DEVICECHANGE has come
+			std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		}
+
+		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		// store the last connection counts
+		auto last_conn_status = count_connections_;
+		count_connections_.clear();
+
+		auto paths = Device::Enumerate();
+
+		// check all the devices connected
+		for (auto &p : paths)
+		{
+			for (auto &h : path_handlers_)
 			{
-				std::thread th(std::bind(&Watcher::Impl::proc_wm_devicechange_async, this, nEventType, dwData));
-				th_proc.swap(th);
+				Target t = h.first;
+				if (Device::Test(p, t.VendorId, t.ProductId, t.UsagePage, t.Usage))
+				{
+					if (conn == arrival_ || conn == update_)
+					{	// if DBT_DEVICEARRIVAL is coming
+						if (last_conn_status.count(t) == 0 || !last_conn_status[t])
+						{	// target has come
+							h.second.first(p);
+						}
+					}
+					count_connections_[t] = true;
+				}
 			}
 		}
-	}
-	
-	void proc_wm_devicechange(UINT nEventType, DWORD_PTR dwData)
-	{
-		proc_wm_devicechange_start_thread(nEventType, dwData);
-		proc_wm_devicechange_start_thread(DBT_ANY, 0);
 
-		switch (nEventType)
+		// check the devices disconnected
+		for (auto &h : path_handlers_)
 		{
-		default: utils::trace(_T("DBT_unknown(%04xH)"), nEventType); break;
-#define CASE_DBT(S)	case S: utils::trace(_T(#S) _T("(%04xH)"), S); break
-		CASE_DBT(DBT_APPYBEGIN);
-		CASE_DBT(DBT_APPYEND);
-		CASE_DBT(DBT_DEVNODES_CHANGED);
-		CASE_DBT(DBT_QUERYCHANGECONFIG);
-		CASE_DBT(DBT_CONFIGCHANGED);
-		CASE_DBT(DBT_CONFIGCHANGECANCELED);
-		CASE_DBT(DBT_MONITORCHANGE);
-		CASE_DBT(DBT_SHELLLOGGEDON);
-		CASE_DBT(DBT_CONFIGMGAPI32);
-		CASE_DBT(DBT_VXDINITCOMPLETE);
-		CASE_DBT(DBT_VOLLOCKQUERYLOCK);
-		CASE_DBT(DBT_VOLLOCKLOCKTAKEN);
-		CASE_DBT(DBT_VOLLOCKLOCKFAILED);
-		CASE_DBT(DBT_VOLLOCKQUERYUNLOCK);
-		CASE_DBT(DBT_VOLLOCKLOCKRELEASED);
-		CASE_DBT(DBT_VOLLOCKUNLOCKFAILED);
-		CASE_DBT(DBT_DEVICEARRIVAL);
-		CASE_DBT(DBT_DEVICEQUERYREMOVE);
-		CASE_DBT(DBT_DEVICEQUERYREMOVEFAILED);
-		CASE_DBT(DBT_DEVICEREMOVEPENDING);
-		CASE_DBT(DBT_DEVICEREMOVECOMPLETE);
-		CASE_DBT(DBT_DEVICETYPESPECIFIC);
-#undef CASE_DBT
+			Target t = h.first;
+			if (count_connections_.count(t) == 0)
+			{	// target not found
+				count_connections_[t] = false;
+				if (conn == remove_ || conn == update_)
+				{	// if DBT_DEVICEREMOVECOMPLETE is coming
+					if (last_conn_status.count(t) != 0 && last_conn_status[t])
+					{	// target has gone
+						h.second.second();
+					}
+				}
+			}
+		}
+
+		// iterate handler for any type of event
+		for (auto &h : handlers_on_devchange)
+		{
+			h();
+		}
+
+		if (conn != update_)
+		{	// only when the real WM_DEVICECHANGE has come
+			register_wm_input_targets();
+		}
+
+		if (conn == remove_ || conn == update_) mtx_remove_.unlock();
+		if (conn == arrival_ || conn == update_) mtx_arrival_.unlock();
+	}
+
+	std::thread th_arrival_, th_remove_, th_update_;
+	void proc_wm_devicechange(connection_t conn)
+	{
+		if (conn == arrival_)
+		{
+			if (mtx_arrival_.try_lock())
+			{
+				mtx_arrival_.unlock();
+				if (th_arrival_.joinable()) th_arrival_.join();
+				std::thread th(std::bind(&Watcher::Impl::handle_connection_change, this, conn));
+				th_arrival_.swap(th);
+			}
+		}
+		else if (conn == remove_)
+		{
+			if (mtx_remove_.try_lock())
+			{
+				mtx_remove_.unlock();
+				if (th_remove_.joinable()) th_remove_.join();
+				std::thread th(std::bind(&Watcher::Impl::handle_connection_change, this, conn));
+				th_remove_.swap(th);
+			}
 		}
 	}
 
@@ -260,8 +353,16 @@ struct Watcher::Impl
 			Watcher::GetInstance().pImpl->proc_wm_input(GET_RAWINPUT_CODE_WPARAM(wp), (HRAWINPUT)lp);
 			break;
 		case WM_DEVICECHANGE:
-			Watcher::GetInstance().pImpl->proc_wm_devicechange((UINT)wp, (DWORD_PTR)lp);
+		{
+			connection_t conn = invalid_;
+			if (wp == DBT_DEVICEARRIVAL) conn = arrival_;
+			if (wp == DBT_DEVICEREMOVECOMPLETE) conn = remove_;
+			if (conn != invalid_)
+			{
+				Watcher::GetInstance().pImpl->proc_wm_devicechange(conn);
+			}
 			break;
+		}
 		case WM_DESTROY:
 			HIDOI_UTILS_TRACE_STR("WM_DESTROY - Destroying watcher window");
 			PostQuitMessage(0);
@@ -273,6 +374,7 @@ struct Watcher::Impl
 		return DefWindowProc(window, msg, wp, lp);
 	}
 
+	HANDLE h_reg_notif_;
 	void register_hid_notification(void)
 	{
 		DEV_BROADCAST_DEVICEINTERFACE    broadcastInterface = {0};
@@ -300,6 +402,7 @@ struct Watcher::Impl
 		h_reg_notif_ = INVALID_HANDLE_VALUE;
 	}
 
+	bool req_stop_;
 	bool proc_watch_msg_loop()
 	{
 		MSG msg;
@@ -328,6 +431,8 @@ struct Watcher::Impl
 		};
 		return true;
 	}
+
+	std::condition_variable cond_started_;
 
 	void proc_watch()
 	{
@@ -375,9 +480,7 @@ struct Watcher::Impl
 		th_watch_.swap(th);
 		cond_started_.wait(lock);
 		if (th_watch_.joinable())
-		{
-			add_wm_devicechange_func(DBT_ANY, std::bind(&Watcher::Impl::register_wm_input_targets, this, std::placeholders::_1));
-			register_wm_input_targets(0);
+		{	// thread started
 			return true;
 		}
 		return false;
@@ -431,47 +534,12 @@ Watcher & Watcher::GetInstance(void)
 	return instance;
 }
 
-BOOL Watcher::RegisterDeviceChangeEventListener(UINT uEventType, std::function<DeviceChangeEventListener>  const & listener)
-{
-	return (BOOL) pImpl->add_wm_devicechange_func(uEventType, listener);
-}
-
-BOOL Watcher::UnregisterDeviceChangeEventListener(UINT uEventType)
-{
-	return (BOOL) pImpl->remove_wm_devicechange_func(uEventType);
-}
-
-BOOL Watcher::UnregisterDeviceChangeEventListener()
-{
-	return (BOOL)pImpl->remove_wm_devicechange_func();
-}
-
-BOOL Watcher::RegisterDeviceArrivalEventListener(std::function<DeviceChangeEventListener>  const &listener)
-{
-	return (BOOL)pImpl->add_wm_devicechange_func(DBT_DEVICEARRIVAL, listener);
-}
-
-BOOL Watcher::UnregisterDeviceArrivalEventListener()
-{
-	return (BOOL)pImpl->remove_wm_devicechange_func(DBT_DEVICEARRIVAL);
-}
-
-BOOL Watcher::RegisterDeviceRemoveEventListener(std::function<DeviceChangeEventListener>  const &listener)
-{
-	return (BOOL)pImpl->add_wm_devicechange_func(DBT_DEVICEREMOVECOMPLETE, listener);
-}
-
-BOOL Watcher::UnregisterDeviceRemoveEventListener()
-{
-	return (BOOL)pImpl->remove_wm_devicechange_func(DBT_DEVICEREMOVECOMPLETE);
-}
-
-BOOL Watcher::RegisterRawInputEventListener(Watcher::Target const &target, std::function<RawInputEventListener>  const &listener)
+BOOL Watcher::WatchRawInput(Watcher::Target const &target, std::function<RawInputHandler>  const &listener)
 {
 	return (BOOL)pImpl->add_wm_input_func(target, listener);
 }
 
-BOOL Watcher::UnregisterRawInputEventListener(Watcher::Target const &target)
+BOOL Watcher::UnwatchRawInput(Watcher::Target const &target)
 {
 	return (BOOL)pImpl->remove_wm_input_func(target);
 }
@@ -484,17 +552,42 @@ static Watcher::Target _raw_input_to_target(RawInput const &ri)
 	return tgt;
 }
 
-BOOL Watcher::RegisterRawInputEventListener(RawInput const &ri, std::function<RawInputEventListener>  const &listener)
+BOOL Watcher::WatchRawInput(RawInput const &ri, std::function<RawInputHandler>  const &listener)
 {
 	return (BOOL)pImpl->add_wm_input_func(_raw_input_to_target(ri), listener);
 }
 
-BOOL Watcher::UnregisterRawInputEventListener(RawInput const &ri)
+BOOL Watcher::UnwatchRawInput(RawInput const &ri)
 {
 	return (BOOL)pImpl->remove_wm_input_func(_raw_input_to_target(ri));
 }
 
-BOOL Watcher::UnregisterRawInputEventListener()
+BOOL Watcher::UnwatchAllRawInputs()
 {
 	return (BOOL)pImpl->remove_wm_input_func();
+}
+
+BOOL Watcher::WatchConnection(Target const &target, std::function<DeviceArrivalHandler> const &on_arrive, std::function<DeviceRemoveHandler> const &on_remove)
+{
+	return (BOOL)pImpl->add_handler_connection(target, on_arrive, on_remove);
+}
+
+BOOL Watcher::UnwatchConnection(Target const &target)
+{
+	return (BOOL)pImpl->remove_handler_connection(target);
+}
+
+BOOL Watcher::UnwatchAllConnections()
+{
+	return (BOOL)pImpl->remove_handler_connection();
+}
+
+BOOL Watcher::WatchDeviceChange(std::function<DeviceChangeHandler> const &on_devchange)
+{
+	return (BOOL)pImpl->add_handler_devchange(on_devchange);
+}
+
+BOOL Watcher::UnwatchDeviceChange()
+{
+	return (BOOL)pImpl->remove_handlers_devchange();
 }
