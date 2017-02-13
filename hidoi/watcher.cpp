@@ -461,6 +461,9 @@ struct Watcher::Impl
 
 	void stop()
 	{
+		// wait WM_DEVICECHANGE to be handled 
+		if (th_connection_.joinable()) th_connection_.join(); 
+
 		std::lock_guard<std::mutex> lock(mtx_th_watch_);
 		if (th_watch_.joinable())
 		{
