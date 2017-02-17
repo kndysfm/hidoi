@@ -32,13 +32,13 @@ namespace hidoi
 			bool operator<=(Target const & x) const;
 			bool operator>=(Target const & x) const;
 		};
-		typedef void (RawInputHandler)(std::vector<BYTE> const &);
+		typedef std::function<void (std::vector<BYTE> const &)> RawInputHandler;
 
-		typedef void (DeviceArrivalHandler)(hidoi::Device::Path const &);
+		typedef std::function<void (hidoi::Device::Path const &)> DeviceArrivalHandler;
 
-		typedef void (DeviceRemoveHandler)(void);
+		typedef std::function<void (void)> DeviceRemoveHandler;
 
-		typedef void (DeviceChangeHandler)(void);
+		typedef std::function<void (void)> DeviceChangeHandler;
 
 	private: // methods
 		Watcher(Watcher const &) = delete;	// copy constructor
@@ -51,19 +51,19 @@ namespace hidoi
 	public: // methods
 		static Watcher &GetInstance(void); // singleton pattern
 
-		BOOL WatchRawInput(Target const &target, std::function<RawInputHandler>  const &listener);
+		BOOL WatchRawInput(Target const &target, RawInputHandler const &listener);
 		BOOL UnwatchRawInput(Target const &target);
 
-		BOOL WatchRawInput(RawInput const &ri, std::function<RawInputHandler>  const &listener);
+		BOOL WatchRawInput(RawInput const &ri, RawInputHandler const &listener);
 		BOOL UnwatchRawInput(RawInput const &ri);
 
 		BOOL UnwatchAllRawInputs();
 
-		BOOL WatchConnection(Target const &target, std::function<DeviceArrivalHandler> const &on_arrive, std::function<DeviceRemoveHandler> const &on_remove);
+		BOOL WatchConnection(Target const &target, DeviceArrivalHandler const &on_arrive, DeviceRemoveHandler const &on_remove);
 		BOOL UnwatchConnection(Target const &target);
 		BOOL UnwatchAllConnections();
 		
-		BOOL WatchDeviceChange(std::function<DeviceChangeHandler> const &on_devchange);
+		BOOL WatchDeviceChange(DeviceChangeHandler const &on_devchange);
 		BOOL UnwatchDeviceChange();
 
 	};

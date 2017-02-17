@@ -56,7 +56,7 @@ struct Watcher::Impl
 	std::thread th_watch_;
 	HWND h_dlg_;
 
-	typedef std::function<Watcher::RawInputHandler> wm_input_listner_t;
+	typedef Watcher::RawInputHandler wm_input_listner_t;
 	std::map<Watcher::Target, wm_input_listner_t> rawinput_listeners_;
 
 	std::vector<wm_input_listner_t> get_wm_input_listners(std::vector<RawInput> &ris)
@@ -145,7 +145,7 @@ struct Watcher::Impl
 		delete[] data;
 	}
 
-	bool add_wm_input_func(Watcher::Target const &tgt, std::function<RawInputHandler>  const &listener)
+	bool add_wm_input_func(Watcher::Target const &tgt, RawInputHandler  const &listener)
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
@@ -184,12 +184,12 @@ struct Watcher::Impl
 		return true;
 	}
 
-	typedef std::pair<std::function<DeviceArrivalHandler>, std::function<DeviceRemoveHandler>> connection_handlers_t;
+	typedef std::pair<DeviceArrivalHandler, DeviceRemoveHandler> connection_handlers_t;
 	std::map< Watcher::Target, connection_handlers_t> path_handlers_;
 
 	typedef std::pair<std::function<void(void)>, std::thread> pair_function_thread_t;
 
-	bool add_handler_connection(Target const &target, std::function<DeviceArrivalHandler> const &on_arrive, std::function<DeviceRemoveHandler> const &on_remove)
+	bool add_handler_connection(Target const &target, DeviceArrivalHandler const &on_arrive, DeviceRemoveHandler const &on_remove)
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
@@ -224,9 +224,9 @@ struct Watcher::Impl
 		return true;
 	}
 
-	std::vector<std::function<DeviceChangeHandler>> handlers_on_devchange;
+	std::vector<DeviceChangeHandler> handlers_on_devchange;
 
-	BOOL add_handler_devchange(std::function<DeviceChangeHandler> const &on_devchange)
+	BOOL add_handler_devchange(DeviceChangeHandler const &on_devchange)
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
@@ -510,7 +510,7 @@ Watcher & Watcher::GetInstance(void)
 	return instance;
 }
 
-BOOL Watcher::WatchRawInput(Watcher::Target const &target, std::function<RawInputHandler>  const &listener)
+BOOL Watcher::WatchRawInput(Watcher::Target const &target, RawInputHandler  const &listener)
 {
 	return (BOOL)pImpl->add_wm_input_func(target, listener);
 }
@@ -526,7 +526,7 @@ static Watcher::Target _raw_input_to_target(RawInput const &ri)
 	return tgt;
 }
 
-BOOL Watcher::WatchRawInput(RawInput const &ri, std::function<RawInputHandler>  const &listener)
+BOOL Watcher::WatchRawInput(RawInput const &ri, RawInputHandler  const &listener)
 {
 	return (BOOL)pImpl->add_wm_input_func(_raw_input_to_target(ri), listener);
 }
@@ -541,7 +541,7 @@ BOOL Watcher::UnwatchAllRawInputs()
 	return (BOOL)pImpl->remove_wm_input_func();
 }
 
-BOOL Watcher::WatchConnection(Target const &target, std::function<DeviceArrivalHandler> const &on_arrive, std::function<DeviceRemoveHandler> const &on_remove)
+BOOL Watcher::WatchConnection(Target const &target, DeviceArrivalHandler const &on_arrive, DeviceRemoveHandler const &on_remove)
 {
 	return (BOOL)pImpl->add_handler_connection(target, on_arrive, on_remove);
 }
@@ -556,7 +556,7 @@ BOOL Watcher::UnwatchAllConnections()
 	return (BOOL)pImpl->remove_handler_connection();
 }
 
-BOOL Watcher::WatchDeviceChange(std::function<DeviceChangeHandler> const &on_devchange)
+BOOL Watcher::WatchDeviceChange(DeviceChangeHandler const &on_devchange)
 {
 	return (BOOL)pImpl->add_handler_devchange(on_devchange);
 }

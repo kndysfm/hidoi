@@ -85,8 +85,8 @@ namespace hidoi
 
 		std::vector<BYTE> const * GetInput(void);
 
-		typedef void (InputListener)(std::vector<BYTE> const &);
-		BOOL StartListeningInput(std::function<InputListener> const &listener);
+		typedef std::function<void (std::vector<BYTE> const &)>InputListener;
+		BOOL StartListeningInput(InputListener const &listener);
 
 		BOOL IsListeningInput(void) const;
 

@@ -372,9 +372,9 @@ public:
 
 	}
 
-	std::function<InputListener> listener_;
+	InputListener listener_;
 
-	BOOL start_async(std::function<InputListener> const &listener)
+	BOOL start_async(InputListener const &listener)
 	{
 		if (!info_) return FALSE;
 
@@ -559,7 +559,7 @@ std::vector<BYTE> const * Device::GetInput(void)
 	return pImpl->read() ? &pImpl->info_->inputReportBuffer : NULL;
 }
 
-BOOL Device::StartListeningInput(std::function<InputListener> const &listener)
+BOOL Device::StartListeningInput(InputListener const &listener)
 {
 	return pImpl->start_async(listener);
 }
