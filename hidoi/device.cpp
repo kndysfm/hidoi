@@ -384,6 +384,7 @@ public:
 
 		listener_ = listener;
 		is_requested_stop_reading_ = FALSE;
+		is_read_pending_ = false;
 		std::thread th(std::bind(&Impl::read_async, this));
 
 		reader_thread_.swap(th);
@@ -398,11 +399,10 @@ public:
 		if (reader_thread_.joinable())
 		{
 			reader_thread_.join();
-			if (!reader_thread_.joinable())
-			{
-				std::lock_guard<std::mutex> lock(mtx_);
-				::HidD_FlushQueue(info_->hDevice);
-			}
+			is_requested_stop_reading_ = FALSE;
+			is_read_pending_ = false;
+			std::lock_guard<std::mutex> lock(mtx_);
+			::HidD_FlushQueue(info_->hDevice);
 			listener_ = nullptr;
 		}
 	}
