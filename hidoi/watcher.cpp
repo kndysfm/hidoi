@@ -52,7 +52,7 @@ bool Watcher::Target::operator>=(Target const & x) const
 
 struct Watcher::Impl
 {
-	std::mutex mtx_listeners_, mtx_th_watch_;
+	std::recursive_mutex mtx_listeners_, mtx_th_watch_;
 	std::thread th_watch_;
 	HWND h_dlg_;
 
@@ -149,7 +149,7 @@ struct Watcher::Impl
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 
 		wm_input_listner_t l(listener);
 		rawinput_listeners_[tgt] = (l);
@@ -162,7 +162,7 @@ struct Watcher::Impl
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 		if (rawinput_listeners_.count(tgt) == 1)
 		{
 			rawinput_listeners_.erase(tgt);
@@ -177,7 +177,7 @@ struct Watcher::Impl
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 		rawinput_listeners_.clear();
 		register_wm_input_targets(); // update
 
@@ -193,7 +193,7 @@ struct Watcher::Impl
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 		path_handlers_[target] = connection_handlers_t(on_arrive, on_remove);
 		proc_wm_devicechange();
 
@@ -204,7 +204,7 @@ struct Watcher::Impl
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 		if (path_handlers_.count(target) == 1)
 		{
 			path_handlers_.erase(target);
@@ -218,7 +218,7 @@ struct Watcher::Impl
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 		path_handlers_.clear();
 
 		return true;
@@ -230,7 +230,7 @@ struct Watcher::Impl
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 		handlers_on_devchange.push_back(on_devchange);
 		proc_wm_devicechange();
 
@@ -241,7 +241,7 @@ struct Watcher::Impl
 	{
 		if (h_dlg_ == NULL || !th_watch_.joinable()) return false;
 
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 		handlers_on_devchange.clear();
 
 		return true;
@@ -257,7 +257,7 @@ struct Watcher::Impl
 		if (by_wm) std::this_thread::sleep_for(std::chrono::milliseconds(500));
 		else std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		
-		std::lock_guard<std::mutex> lock(mtx_listeners_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_listeners_);
 		// store the last connection counts
 		auto last_conn_status = count_connections_;
 		count_connections_.clear();
@@ -274,7 +274,7 @@ struct Watcher::Impl
 				{
 					if (last_conn_status.count(t) == 0 || !last_conn_status[t])
 					{	// target has come
-						h.second.first(p);
+						if (h.second.first) h.second.first(p);
 					}
 					count_connections_[t] = true;
 				}
@@ -290,7 +290,7 @@ struct Watcher::Impl
 				count_connections_[t] = false;
 				if (last_conn_status.count(t) != 0 && last_conn_status[t])
 				{	// target has gone
-					h.second.second();
+					if (h.second.second) h.second.second();
 				}
 			}
 		}
@@ -406,6 +406,7 @@ struct Watcher::Impl
 	}
 
 	std::condition_variable cond_started_;
+	std::mutex mtx_cond_;
 
 	void proc_watch()
 	{
@@ -444,7 +445,8 @@ struct Watcher::Impl
 
 	bool start()
 	{
-		std::unique_lock<std::mutex> lock(mtx_th_watch_);
+		std::lock_guard<std::recursive_mutex> guard(mtx_th_watch_);
+		std::unique_lock<std::mutex> lock(mtx_cond_);
 		if (th_watch_.joinable()) return true;
 
 		h_dlg_ = NULL;
@@ -464,7 +466,7 @@ struct Watcher::Impl
 		// wait WM_DEVICECHANGE to be handled 
 		if (th_connection_.joinable()) th_connection_.join(); 
 
-		std::lock_guard<std::mutex> lock(mtx_th_watch_);
+		std::lock_guard<std::recursive_mutex> lock(mtx_th_watch_);
 		if (th_watch_.joinable())
 		{
 			if (h_dlg_)
@@ -504,8 +506,8 @@ Watcher & Watcher::GetInstance(void)
 {
 	static Watcher instance;
 
-	std::lock_guard<std::mutex> lock_l(instance.pImpl->mtx_listeners_);
-	std::lock_guard<std::mutex> lock_t(instance.pImpl->mtx_th_watch_);
+	std::lock_guard<std::recursive_mutex> lock_l(instance.pImpl->mtx_listeners_);
+	std::lock_guard<std::recursive_mutex> lock_t(instance.pImpl->mtx_th_watch_);
 
 	return instance;
 }
