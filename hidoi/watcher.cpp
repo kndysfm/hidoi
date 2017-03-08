@@ -131,11 +131,12 @@ struct Watcher::Impl
 			{	// listeners are registered
 				for (DWORD idx = 0; idx < cnt; idx++)
 				{
-					BYTE const *src = raw;
-					for (DWORD i = 0; i < size; i++, src++)
-					{
-						rep_in[i] = *src;
-					}
+					//BYTE const *src = raw;
+					//for (DWORD i = 0; i < size; i++, src++)
+					//{
+					//	rep_in[i] = *src;
+					//}
+					memcpy_s(rep_in.data(), size, raw, size);
 					// pass dat vector to registerd functional object
 					for (auto &l : ls) l(rep_in);
 					raw += size;
@@ -400,7 +401,7 @@ struct Watcher::Impl
 					::DispatchMessage(&msg);
 				}
 			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			std::this_thread::yield();
 		};
 		return true;
 	}
