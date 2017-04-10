@@ -79,8 +79,7 @@ int main()
 	watcher.WatchDeviceChange([]() {Tcout << _T("Device Nodes Has Changed !!(2) \r\n"); });
 
 	// add handler for WM_INPUT about HID devices
-	hidoi::Watcher::Target tgt;
-	tgt.VendorId = 0; tgt.ProductId = 0; tgt.UsagePage = HID_USAGE_PAGE_DIGITIZER; tgt.Usage = HID_USAGE_DIGITIZER_PEN;
+	hidoi::Watcher::Target tgt(HID_USAGE_PAGE_DIGITIZER, HID_USAGE_DIGITIZER_PEN);
 	Tcout << _T("Start watching Raw Input of HID and connection of device(s)\r\n");
 	watcher.WatchRawInput(tgt, PenInputEventListener);
 
