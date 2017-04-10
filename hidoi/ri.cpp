@@ -55,16 +55,20 @@ struct RawInput::Impl
 			::GetRawInputDeviceInfo(list.hDevice, RIDI_DEVICEINFO, &inf, &info_size);
 			if (inf.dwType == RIM_TYPEHID) // only HID
 			{
-				rid_info_t rid;
-				rid.info = inf;
-
 				::GetRawInputDeviceInfo(list.hDevice, RIDI_DEVICENAME, NULL, &info_size);
 				_TCHAR *name = new _TCHAR[info_size];
 				::GetRawInputDeviceInfo(list.hDevice, RIDI_DEVICENAME, name, &info_size);
-				rid.name = name;
-				delete[] name;
+				HANDLE h = ::CreateFile(name, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+				if (h != INVALID_HANDLE_VALUE)
+				{
+					rid_info_t rid;
+					rid.info = inf;
+					rid.name = name;
 
-				rid_infos_[list.hDevice] = rid;
+					rid_infos_[list.hDevice] = rid;
+				}
+				delete[] name;
+				::CloseHandle(h);
 			}
 		}
 	}
